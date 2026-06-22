@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Talkomatic Moderation Log</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="images/icons/favicon.png" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #000;
+        --panel: #0d0d0d;
+        --panel2: #141414;
+        --line: #333;
+        --line2: #262626;
+        --txt: #eee;
+        --dim: #9a9a9a;
+        --dim2: #6f6f6f;
+        --orange: #ff9800;
+        --red: #ff4d4d;
+        --amber: #ffb454;
+        --blue: #5aa9ff;
+        --purple: #c08bff;
+        --green: #57d9a3;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--txt);
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          Roboto,
+          Arial,
+          sans-serif;
+      }
+      a {
+        color: var(--orange);
+      }
+      .mono {
+        font-family: "Courier New", monospace;
+      }
+
+      /* states */
+      .ml-state {
+        text-align: center;
+        padding: 90px 20px;
+        color: var(--dim);
+      }
+      .ml-state h2 {
+        color: var(--txt);
+        margin: 0 0 8px;
+      }
+      .ml-state.denied h2 {
+        color: var(--red);
+      }
+      .hidden {
+        display: none !important;
+      }
+
+      /* top bar */
+      .ml-top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px 18px;
+        background: var(--panel);
+        border-bottom: 2px solid var(--orange);
+      }
+      .ml-brand {
+        font-size: 16px;
+        font-weight: 800;
+        color: var(--orange);
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+      }
+      .ml-brand small {
+        color: var(--dim);
+        font-weight: 600;
+        font-size: 11px;
+        display: block;
+        letter-spacing: 0.4px;
+      }
+      .ml-me {
+        font-size: 12px;
+        color: var(--dim);
+      }
+      .ml-spacer {
+        flex: 1 1 40px;
+      }
+      .ml-tbtn {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        color: var(--txt);
+        border-radius: 0;
+        padding: 8px 13px;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .ml-tbtn:hover {
+        border-color: var(--orange);
+        color: var(--orange);
+      }
+      .ml-tbtn.primary {
+        background: var(--orange);
+        border-color: var(--orange);
+        color: #000;
+      }
+
+      /* role chips */
+      .chip {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 800;
+        padding: 2px 7px;
+        border-radius: 0;
+        letter-spacing: 0.6px;
+        vertical-align: middle;
+      }
+      .chip.dev {
+        background: var(--red);
+        color: #1a0000;
+      }
+      .chip.mod {
+        background: var(--orange);
+        color: #1a1200;
+      }
+      .who.dev {
+        color: var(--red);
+        font-weight: 800;
+      }
+      .who.mod {
+        color: var(--orange);
+        font-weight: 800;
+      }
+
+      /* intro + legend */
+      .ml-intro {
+        padding: 10px 18px;
+        font-size: 12.5px;
+        color: var(--dim);
+        border-bottom: 1px solid var(--line2);
+        background: var(--panel);
+      }
+      .ml-legend {
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--line2);
+        background: var(--panel2);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 8px 18px;
+      }
+      .leg {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--dim);
+      }
+      .leg b {
+        color: var(--txt);
+        font-weight: 600;
+      }
+      .swatch {
+        width: 12px;
+        height: 12px;
+        flex: none;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      /* toolbar */
+      .ml-toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 10px 18px;
+        border-bottom: 1px solid var(--line2);
+        background: var(--panel);
+      }
+      .ml-search {
+        flex: 1 1 200px;
+        min-width: 150px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        color: var(--txt);
+        padding: 9px 12px;
+        font-size: 13px;
+        outline: none;
+      }
+      .ml-search:focus {
+        border-color: var(--orange);
+      }
+      .ml-filters {
+        display: flex;
+        gap: 0;
+      }
+      .ml-fbtn {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-left: none;
+        color: var(--dim);
+        padding: 9px 13px;
+        font-size: 12.5px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .ml-fbtn:first-child {
+        border-left: 1px solid var(--line);
+      }
+      .ml-fbtn.active {
+        background: var(--orange);
+        border-color: var(--orange);
+        color: #000;
+      }
+
+      /* focus bar */
+      .ml-focus {
+        padding: 9px 18px;
+        background: #1a1206;
+        border-bottom: 1px solid var(--orange);
+        font-size: 12.5px;
+        color: var(--orange);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .ml-focus .sum {
+        color: var(--dim);
+      }
+      .ml-focus .sum b {
+        color: var(--txt);
+      }
+
+      .ml-roster {
+        padding: 8px 18px;
+        font-size: 12px;
+        color: var(--dim2);
+        border-bottom: 1px solid var(--line2);
+      }
+      .ml-roster b {
+        color: var(--dim);
+        font-weight: 600;
+      }
+
+      /* list + entries */
+      .ml-list {
+        padding: 10px 12px 60px;
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      .ml-empty {
+        text-align: center;
+        color: var(--dim2);
+        padding: 40px;
+        font-size: 13px;
+      }
+      .entry {
+        background: var(--panel);
+        border: 1px solid var(--line2);
+        border-left: 4px solid var(--dim2);
+        margin: 9px 0;
+      }
+      .entry .row1 {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        padding: 10px 12px 4px;
+        flex-wrap: wrap;
+      }
+      .entry .act {
+        font-weight: 700;
+      }
+      .entry .when {
+        margin-left: auto;
+        color: var(--dim2);
+        font-size: 11px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .entry .meta {
+        padding: 0 12px 10px;
+        font-size: 12px;
+        color: var(--dim);
+        word-break: break-word;
+      }
+      .entry .meta .k {
+        color: var(--dim2);
+      }
+      .entry .meta .ip {
+        color: var(--amber);
+      }
+      .uref {
+        color: var(--txt);
+        border-bottom: 1px dotted var(--dim2);
+        cursor: pointer;
+      }
+      .uref:hover {
+        color: var(--orange);
+        border-color: var(--orange);
+      }
+      .entry .detail {
+        margin: 0 12px 10px;
+        padding: 7px 10px;
+        background: var(--bg);
+        border: 1px solid var(--line2);
+        color: var(--txt);
+        font-size: 12.5px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      /* category colors */
+      .cat-destructive {
+        border-left-color: var(--red);
+      }
+      .cat-destructive .act {
+        color: var(--red);
+      }
+      .cat-moderation {
+        border-left-color: var(--amber);
+      }
+      .cat-moderation .act {
+        color: var(--amber);
+      }
+      .cat-broadcast {
+        border-left-color: var(--blue);
+      }
+      .cat-broadcast .act {
+        color: var(--blue);
+      }
+      .cat-config {
+        border-left-color: var(--purple);
+      }
+      .cat-config .act {
+        color: var(--purple);
+      }
+      .cat-signin {
+        border-left-color: var(--green);
+      }
+      .cat-signin .act {
+        color: var(--green);
+      }
+      .cat-namechange {
+        border-left-color: var(--amber);
+      }
+      .cat-namechange .act {
+        color: var(--amber);
+      }
+      .cat-other {
+        border-left-color: var(--dim2);
+      }
+      .cat-other .act {
+        color: var(--dim);
+      }
+
+      /* comments */
+      .comments {
+        border-top: 1px dashed var(--line2);
+        margin: 0 12px;
+        padding: 8px 0;
+      }
+      .cmt {
+        font-size: 12.5px;
+        padding: 5px 0;
+        color: var(--txt);
+        display: flex;
+        gap: 8px;
+      }
+      .cmt .cwho {
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .cmt .cwho.dev {
+        color: var(--red);
+      }
+      .cmt .cwho.mod {
+        color: var(--orange);
+      }
+      .cmt .ctext {
+        color: var(--txt);
+        word-break: break-word;
+        flex: 1;
+      }
+      .cmt .cwhen {
+        color: var(--dim2);
+        font-size: 10.5px;
+        white-space: nowrap;
+      }
+      .cmtbox {
+        display: flex;
+        gap: 6px;
+        padding: 6px 12px 12px;
+      }
+      .cmtbox input {
+        flex: 1;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        color: var(--txt);
+        padding: 7px 10px;
+        font-size: 12.5px;
+        outline: none;
+      }
+      .cmtbox input:focus {
+        border-color: var(--orange);
+      }
+      .cmtbox button {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        color: var(--orange);
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .cmtbox button:hover {
+        background: var(--orange);
+        color: #000;
+      }
+      @media (max-width: 560px) {
+        .entry .when {
+          margin-left: 0;
+          width: 100%;
+        }
+        .ml-brand {
+          font-size: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading" class="ml-state">
+      <h2>Loading…</h2>
+      <p>Verifying your staff key.</p>
+    </div>
+
+    <div id="denied" class="ml-state denied hidden">
+      <h2>Access denied</h2>
+      <p>This page is for moderators and developers only.</p>
+      <p>
+        <button id="enterKeyBtn" class="ml-tbtn primary">
+          🔑 Enter staff key
+        </button>
+        &nbsp;
+        <a class="ml-tbtn" href="/index.html">← Back to lobby</a>
+      </p>
+    </div>
+
+    <div id="app" class="hidden">
+      <header class="ml-top">
+        <div class="ml-brand">Talkomatic™ <small>Moderation Log</small></div>
+        <span id="meInfo" class="ml-me"></span>
+        <div class="ml-spacer"></div>
+        <button id="legendBtn" class="ml-tbtn">Legend</button>
+        <button id="helpBtn" class="ml-tbtn">Help</button>
+        <a class="ml-tbtn" href="/index.html">← Lobby</a>
+      </header>
+
+      <div class="ml-intro">
+        Every staff action and every user identity change is recorded here,
+        live. Click a <span class="uref">name</span> to trace that user. Add a
+        comment under any entry to ask “why?” or note context. Comments are
+        permanent and visible to all staff.
+      </div>
+
+      <div id="legend" class="ml-legend hidden"></div>
+
+      <div class="ml-toolbar">
+        <input
+          id="search"
+          class="ml-search"
+          placeholder="Search name, action, IP, room, message, comment…"
+        />
+        <div class="ml-filters">
+          <button class="ml-fbtn active" data-f="all">All</button>
+          <button class="ml-fbtn" data-f="action">Actions</button>
+          <button class="ml-fbtn" data-f="identity">Identity</button>
+        </div>
+      </div>
+
+      <div id="focusBar" class="ml-focus hidden"></div>
+      <div id="roster" class="ml-roster"></div>
+      <div id="list" class="ml-list"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/staff-ui.js?v=1.3.0"></script>
+    <script src="js/mod.js?v=2.2.0"></script>
+  </body>
+</html>

@@ -5,7 +5,7 @@
 class TalkomaticPopupManager {
   constructor() {
     // Current version - update this when you release new versions
-    this.currentVersion = "4.0.0";
+    this.currentVersion = "5.0.0";
     // Cookie names
     this.cookieNames = {
       lastShown: "talkomatic_popup_last_shown",
@@ -435,118 +435,75 @@ class TalkomaticPopupManager {
                 <div class="talkomatic-popup-content">
                     <div class="talkomatic-popup-header">
                         <button class="talkomatic-popup-close" data-action="close">&times;</button>
-                        <h2 class="talkomatic-popup-title">🚀 Talkomatic v${this.currentVersion} is Here!</h2>
-                        <p class="talkomatic-popup-version">Major Update - ${currentDate}</p>
-                        <span class="talkomatic-version-pill">Biggest update yet</span>
+                        <h2 class="talkomatic-popup-title">🎂 Talkomatic is 2 Years Old!</h2>
+                        <p class="talkomatic-popup-version">Anniversary Update, ${currentDate}</p>
+                        <span class="talkomatic-version-pill">Happy Birthday</span>
                     </div>
 
                     <div class="talkomatic-popup-body">
 
-                        <!-- Intro -->
                         <div class="talkomatic-update-section">
                             <div class="talkomatic-highlight-box">
-                                <h4>A Faster, Safer, More Fun Talkomatic</h4>
-                                <p>Version 4 is the largest release in Talkomatic history. We rebuilt the word filter from the ground up, added link safety protection, fixed every major reported bug, and made your privacy a priority. Here's everything that's new.</p>
+                                <h4>Two Years of Talkomatic</h4>
+                                <p>It started in 1973 on the PLATO system as the very first online chat. In 2024 it came back to life, open source. Today it turns two. To celebrate, we shipped a big update focused on safety, polish, and a little party. Thank you for being here.</p>
                             </div>
                         </div>
 
-                        <!-- Headline features -->
                         <div class="talkomatic-update-section">
-                            <h3>✨ Major New Features</h3>
+                            <h3>🎉 What's New Today</h3>
                             <div class="talkomatic-feature-grid">
+                                <div class="talkomatic-feature-item">
+                                    <div class="talkomatic-feature-icon">🎂</div>
+                                    <h4>Birthday Celebration</h4>
+                                    <p>Light a candle from the lobby and watch the whole community's count climb together. Drop back in anytime from the cake in the menu.</p>
+                                </div>
                                 <div class="talkomatic-feature-item">
                                     <div class="talkomatic-feature-icon">🛡️</div>
-                                    <h4>Optional Word Filter</h4>
-                                    <p>The automod is now your choice. Click the shield icon in any room to filter offensive words for yourself, or turn it off to see chat unfiltered. It only affects what you see.</p>
-                                </div>
-                                <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">🔗</div>
-                                    <h4>Link Safety Warnings</h4>
-                                    <p>Links posted by other users now show a warning before you visit. No more surprise IP grabbers or scam sites. You decide before you click.</p>
-                                </div>
-                                <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">⚡</div>
-                                    <h4>Instant Guest Sign-In</h4>
-                                    <p>New visitors get a guest name automatically and land straight in the lobby. Zero clicks to start chatting. Change your name anytime.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Automod rebuild -->
-                        <div class="talkomatic-update-section">
-                            <h3>🧠 Smarter Automod</h3>
-                            <ul class="talkomatic-feature-list">
-                                <li>Filter completely rebuilt to catch bypass tricks: split letters, number padding, doubled letters, and fancy unicode fonts <span class="talkomatic-badge improved">IMPROVED</span></li>
-                                <li>Emoticons no longer get censored by the filter, all emote codes render correctly <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Zalgo and glitchy text spam can no longer lag the room for everyone <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Filtering is faster thanks to smarter caching while you type <span class="talkomatic-badge improved">IMPROVED</span></li>
-                            </ul>
-                        </div>
-
-                        <!-- Privacy -->
-                        <div class="talkomatic-update-section">
-                            <h3>🔒 Privacy & Security</h3>
-                            <ul class="talkomatic-feature-list">
-                                <li>Room access codes never appear in your URL, address bar, or browser history anymore <span class="talkomatic-badge privacy">PRIVACY</span></li>
-                                <li>Outside links open in a protected new tab after a clear warning <span class="talkomatic-badge privacy">PRIVACY</span></li>
-                                <li>You stay signed in across server updates, no more random logouts <span class="talkomatic-badge fixed">FIXED</span></li>
-                            </ul>
-                        </div>
-
-                        <!-- Bug fixes -->
-                        <div class="talkomatic-update-section">
-                            <h3>🔧 Bug Fixes & Polish</h3>
-                            <ul class="talkomatic-feature-list">
-                                <li>Emoticon autocomplete no longer breaks after inserting your first emote <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>White bar at the bottom of the screen on mobile and when zoomed is gone <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Mobile keyboard no longer breaks the room layout <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Room type (Public / Semi-Private) stays visible next to the Emoticons button <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Vote kick is now enforced by the server and cleans up properly when users leave <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Message length limits now match everywhere, no more oversized messages from modified clients <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Active rooms now sort to the top of the lobby, spam rooms get cleaned up automatically <span class="talkomatic-badge improved">IMPROVED</span></li>
-                                <li>Smoother resizing with fewer layout recalculations <span class="talkomatic-badge improved">IMPROVED</span></li>
-                            </ul>
-                        </div>
-
-                        <!-- Coming soon -->
-                        <div class="talkomatic-update-section">
-                            <h3>🔮 Coming Soon</h3>
-                            <div class="talkomatic-feature-grid">
-                                <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">🎮</div>
-                                    <h4>Mini Games</h4>
-                                    <p>Tic Tac Toe and more classic games, playable right inside your chat rooms.</p>
+                                    <h4>A Real Moderation Team</h4>
+                                    <p>Talkomatic now has trusted moderators and developers with proper tools to keep rooms safe, calm raids, and handle reports quickly.</p>
                                 </div>
                                 <div class="talkomatic-feature-item">
                                     <div class="talkomatic-feature-icon">🎨</div>
-                                    <h4>Themes</h4>
-                                    <p>Full custom theme support across the whole site, including inside rooms.</p>
-                                </div>
-                                <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">⭐</div>
-                                    <h4>Moderation Team</h4>
-                                    <p>Trusted moderators to keep rooms clean and the community safe, around the clock.</p>
+                                    <h4>The Classic Look</h4>
+                                    <p>The original theme is the default again. World Cup mode is now optional, with a toggle in the bottom left whenever you want it.</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Community -->
                         <div class="talkomatic-update-section">
-                            <h3>💬 Found a Bug? Have an Idea?</h3>
+                            <h3>🔒 Safer and Cleaner</h3>
+                            <ul class="talkomatic-feature-list">
+                                <li>Moderators can remove bad actors instantly, backed by a private log that keeps staff accountable to each other <span class="talkomatic-badge new">NEW</span></li>
+                                <li>Your IP address stays private. Only developers can ever see it, never moderators or other users <span class="talkomatic-badge privacy">PRIVACY</span></li>
+                                <li>Cleaner menus, pop ups, and notifications across the lobby and rooms <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li>Much better fit on phones, with controls that no longer run off the screen <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li>Room sizes can now be adjusted for special events and busy nights <span class="talkomatic-badge new">NEW</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
                             <div class="talkomatic-highlight-box">
-                                <h4>Talkomatic Is Built With You</h4>
-                                <p>Talkomatic Classic is open source and shaped by community feedback. Report bugs, suggest features, or just hang out with us on Discord. Every report in this update came from users like you.</p>
+                                <h4>Come Celebrate</h4>
+                                <p>Open the 🎂 2nd Birthday link in the lobby menu, light a candle, and say happy birthday in any room. Here is to many more years of typing letter by letter together.</p>
+                            </div>
+                        </div>
+
+                        <div class="talkomatic-update-section">
+                            <h3>💬 Built With You</h3>
+                            <div class="talkomatic-highlight-box">
+                                <h4>Talkomatic is open source</h4>
+                                <p>Everything here is shaped by community feedback. Report bugs, suggest ideas, or just hang out with us on Discord. Thank you for two great years.</p>
                             </div>
                         </div>
 
                     </div>
 
                     <div class="talkomatic-popup-footer">
-                        <button data-action="close">Start Chatting</button>
+                        <button data-action="close">Let's Celebrate</button>
                     </div>
                 </div>
             </div>
-        `;
+`;
   }
 
   /**

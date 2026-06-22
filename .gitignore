@@ -1,6 +1,16 @@
 rooms.json
 users.json
 repo-tree.html
+CLAUDE.md
+talkomatic-v4.pdf
+
+# Staff key store and audit logs (never commit)
+mod-keys.json
+modlog.txt
+audit-log.jsonl
+
+# Runtime counters
+anniversary.json
 
 # Dependency directories
 node_modules/

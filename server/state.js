@@ -68,17 +68,26 @@ const CONFIG = {
     ENABLE_BOT_TOKENS: true,
     ENABLE_IP_BASED_USERS: false,
     REQUIRE_USER_AGENT: true,
+    // Live dev feature flag: when false, non-staff cannot create new rooms.
+    ENABLE_ROOM_CREATION: true,
   },
   TIMING: {
     ROOM_CREATION_COOLDOWN: 10000,
     ROOM_DELETION_TIMEOUT: 30000,
     TYPING_TIMEOUT: 2000,
     BATCH_PROCESSING_INTERVAL: 20,
+    // Slow mode: broadcast cadence for rooms a staffer has throttled. Keystrokes
+    // are still captured; the room just sees updates less frequently.
+    SLOW_MODE_BATCH_INTERVAL: 1000,
     AFK_WARNING_TIME: 150000,
     BOT_BLOCK_DURATION: 300000,
     BOT_TOKEN_EXPIRY: 2592000000,
     BOT_TOKEN_CLEANUP_INTERVAL: 86400000,
   },
+
+  // Usernames that only validate when the connection carries a dev or mod key,
+  // so trolls cannot impersonate staff. Compared case-insensitively.
+  RESERVED_NAMES: ["mohd", "talkomatic", "admin", "mod", "dev"],
   VERSIONS: {
     API: "v1",
     SERVER: "2.3.0",
@@ -186,6 +195,10 @@ const state = {
 
   // Dev mode: userIds with a verified dev key
   devUsers: new Set(),
+
+  // Staff runtime toggles (in-memory; reset on restart by design)
+  maintenance: false, // blocks new room creation and joins for non-staff
+  lobbyTicker: "", // editable banner shown at the top of the lobby
 
   // Caches
   normalizeCache: new Map(),
@@ -326,6 +339,12 @@ function promisifySessionSave(session) {
   return util.promisify(session.save).bind(session)();
 }
 
+// True if the (already-sanitized) name matches a reserved staff name.
+function isReservedName(name) {
+  if (typeof name !== "string") return false;
+  return CONFIG.RESERVED_NAMES.includes(name.trim().toLowerCase());
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -344,4 +363,5 @@ module.exports = {
   enforceLocationLimit,
   enforceRoomNameLimit,
   promisifySessionSave,
+  isReservedName,
 };

@@ -4,10 +4,11 @@
 
 // ── 1. CONSTANTS & STATE ────────────────────────────────────────────────────
 
-// Dev mode: pass devKey from localStorage in socket auth
+// Staff mode: pass dev/mod keys from localStorage in socket auth
 const socket = io({
   auth: {
     devKey: localStorage.getItem("talkomatic_devKey") || undefined,
+    modKey: localStorage.getItem("talkomatic_modKey") || undefined,
   },
 });
 
@@ -25,6 +26,11 @@ let talkoboardInstance = null;
 let currentUserIsDev = false;
 let currentUserIsVanished = false;
 let currentUserIsHidden = false;
+
+// Mod / staff state
+let currentUserIsMod = false;
+let isSpectating = false;
+const isStaff = () => currentUserIsDev || currentUserIsMod;
 
 // The user's own raw (unfiltered) text and whether the display is filtered
 let selfRawText = "";
@@ -1511,6 +1517,15 @@ function applyDevAppearanceToRow(row, user) {
     ci.style.removeProperty("color");
     if (crown) crown.remove();
   }
+
+  // Mod badge (distinct from the dev crown), toggled by hide state
+  const modBadge = info.querySelector(".mod-badge");
+  const showModFlair = !!user.isMod && !user.isDev && !user.isHidden;
+  if (showModFlair) {
+    if (!modBadge) info.insertBefore(createModBadge(), info.firstChild);
+  } else if (modBadge) {
+    modBadge.remove();
+  }
 }
 
 function refreshCurrentUserAppearance() {
@@ -1594,7 +1609,8 @@ function createDevHideToggle() {
   else navRight.appendChild(button);
 }
 
-// Dev-only overlay showing per-user context (IP) in the room
+// Dev-only overlay showing per-user context (IP) in the room. Mods can act on
+// users (kick / ban / IP-block) but never see raw IP addresses.
 function renderDevContext() {
   if (!currentUserIsDev) return;
   document.querySelectorAll(".chat-row").forEach((row) => {
@@ -1660,6 +1676,10 @@ function createUserRow(user, container) {
     info.appendChild(crown);
   }
 
+  if (user.isMod && !user.isDev && !user.isHidden) {
+    info.appendChild(createModBadge());
+  }
+
   info.appendChild(
     document.createTextNode(`${user.username} / ${user.location}`),
   );
@@ -1704,18 +1724,16 @@ function createUserRow(user, container) {
   info.appendChild(muteBtn);
   info.appendChild(voteBtn);
 
-  // Dev force-kick button (visible to devs, not on themselves)
-  if (currentUserIsDev && user.id !== currentUserId) {
-    const kickBtn = document.createElement("button");
-    kickBtn.className = "dev-kick-button";
-    kickBtn.innerHTML = "\u26A1";
-    kickBtn.title = "Force kick (Dev)";
-    kickBtn.addEventListener("click", () => {
-      if (confirm(`Force-kick ${user.username}?`)) {
-        socket.emit("dev force kick", { targetUserId: user.id });
-      }
-    });
-    info.appendChild(kickBtn);
+  // Staff actions button (dev + mod, not on yourself, not while spectating).
+  // Opens the per-user staff menu (kick/ban, IP block, wipe, warn, rename,
+  // freeze). The server re-checks role and hierarchy on every action.
+  if (isStaff() && !isSpectating && user.id !== currentUserId) {
+    const staffBtn = document.createElement("button");
+    staffBtn.className = "staff-action-button";
+    staffBtn.innerHTML = "\u2699\uFE0F"; // gear
+    staffBtn.title = "Staff actions";
+    staffBtn.addEventListener("click", () => openUserStaffMenu(user));
+    info.appendChild(staffBtn);
   }
 
   // Chat input wrapper + contenteditable
@@ -2029,9 +2047,10 @@ socket.on("chat update", displayChatMessage);
 
 socket.on("update votes", updateVotesUI);
 
-socket.on("kicked", () => {
+socket.on("kicked", (data) => {
   showInfoModal(
-    "You have been removed from the room by a majority vote.",
+    (data && data.message) ||
+      "You have been removed from the room by a majority vote.",
     () => {
       window.location.href = "/index.html";
     },
@@ -2056,6 +2075,7 @@ socket.on("room joined", (data) => {
   currentRoomName = data.roomName;
 
   currentUserIsDev = !!data.isDev;
+  currentUserIsMod = !!data.isMod;
   currentUserIsHidden = !!data.isHidden;
   currentUserIsVanished = !!data.isVanished;
 
@@ -2066,18 +2086,21 @@ socket.on("room joined", (data) => {
   updateInviteLink();
   createEmotesDropdown();
 
+  // Appearance controls (hide/vanish/color) now live inside the Staff panel,
+  // so the navbar only gains a single "Staff" button — keeps mobile tidy.
   if (currentUserIsDev) {
-    createDevColorPicker();
-    createDevHideToggle();
-    createDevVanishToggle();
-    updateDevHideButton(document.getElementById("devHideToggle"));
     if (!currentUserIsHidden) triggerDevConfetti();
     const savedColor = localStorage.getItem("talkomatic_devColor");
-    if (savedColor) applyDevColor(savedColor);
+    if (savedColor) {
+      socket.emit("dev set color", { color: savedColor });
+      applyDevColor(savedColor);
+    }
   }
 
+  if (isStaff()) createStaffPanelButton();
+  applyRoomFlags(data);
+
   renderDevContext();
-  updateDevHideButton(document.getElementById("devHideToggle"));
 
   setTimeout(() => {
     if (chatInput) {
@@ -2135,6 +2158,7 @@ socket.on("user left", (userId) => {
 
 socket.on("room update", (roomData) => {
   currentRoomLayout = roomData.layout || currentRoomLayout;
+  applyRoomFlags(roomData);
   updateRoomInfo(roomData);
   const activeEl = document.activeElement;
   const saved = new Map();
@@ -2301,10 +2325,18 @@ async function initRoom() {
   updateFilterToggleUI();
 
   const { roomId, accessCode } = readAndScrubUrlParams();
+  const spectate =
+    new URLSearchParams(window.location.search).get("spectate") === "1";
 
   if (roomId) {
     currentRoomId = roomId;
-    joinRoom(roomId, accessCode);
+    if (spectate) {
+      // Dev-only read-only watch; the server validates the dev key.
+      isSpectating = true;
+      socket.emit("staff spectate", { roomId });
+    } else {
+      joinRoom(roomId, accessCode);
+    }
   } else {
     showInfoModal("No room ID provided. Redirecting to lobby.", () => {
       window.location.href = "/index.html";
@@ -2355,7 +2387,8 @@ window.addEventListener("load", () => {
 });
 
 document.querySelector(".leave-room").addEventListener("click", () => {
-  socket.emit("leave room");
+  if (isSpectating) socket.emit("staff unspectate");
+  else socket.emit("leave room");
   window.location.href = "/index.html";
 });
 
@@ -2372,3 +2405,796 @@ function debouncedViewportChange() {
 
 setInterval(updateDateTime, 1000);
 window.addEventListener("resize", debouncedViewportChange);
+
+// ════════════════════════════════════════════════════════════════════════════
+// 18. STAFF UI (mod + dev) — built on the shared StaffUI kit. The server
+// validates role + hierarchy on every action; this layer is presentation only.
+// ════════════════════════════════════════════════════════════════════════════
+
+let currentRoomLocked = false;
+let currentRoomSlow = false;
+let currentRoomSpotlight = false;
+let hudInterval = null;
+let partyHornAudio = null;
+
+function notify(message, type, opts) {
+  if (window.StaffUI)
+    window.StaffUI.toast(
+      message,
+      Object.assign({ type: type || "info" }, opts || {}),
+    );
+  else console.log("[staff]", message);
+}
+
+function staffRole() {
+  return currentUserIsDev ? "dev" : "mod";
+}
+
+function createModBadge() {
+  const badge = document.createElement("span");
+  badge.className = "mod-badge";
+  badge.textContent = "MOD";
+  badge.title = "Moderator";
+  return badge;
+}
+
+// ── Per-user staff menu ──────────────────────────────────────────────────────
+function openUserStaffMenu(user) {
+  if (!window.StaffUI) return;
+  const name = user.username || "user";
+  const items = [
+    {
+      icon: "👢",
+      label: "Kick + room ban",
+      danger: true,
+      desc: "Remove and ban from this room",
+      onClick: async () => {
+        if (
+          await StaffUI.confirm({
+            title: "Kick + ban",
+            message: `Kick and room-ban ${name}?`,
+            danger: true,
+            confirmText: "Kick + ban",
+          })
+        )
+          socket.emit("staff kick", { targetUserId: user.id });
+      },
+    },
+    {
+      icon: "⛔",
+      label: "IP block…",
+      danger: true,
+      desc: "Block this user's IP for a set time",
+      onClick: () => openIpBlockPicker(user),
+    },
+    {
+      icon: "🧹",
+      label: "Wipe typed text",
+      desc: "Clear what they've typed for everyone",
+      onClick: () =>
+        socket.emit("staff wipe buffer", { targetUserId: user.id }),
+    },
+    {
+      icon: "📣",
+      label: "Warn…",
+      desc: "Send a private warning",
+      onClick: async () => {
+        const r = await StaffUI.prompt({
+          title: `Warn ${name}`,
+          icon: "📣",
+          fields: [
+            {
+              name: "value",
+              label: "Warning message",
+              type: "textarea",
+              placeholder: "Please follow the room rules…",
+              maxLength: 300,
+              required: true,
+            },
+          ],
+          confirmText: "Send warning",
+        });
+        if (r != null)
+          socket.emit("staff warn", { targetUserId: user.id, message: r });
+      },
+    },
+    {
+      icon: "🕵️",
+      label: "Force rename to Anonymous",
+      desc: "Reset an offensive name",
+      onClick: async () => {
+        if (
+          await StaffUI.confirm({
+            title: "Force rename",
+            message: `Reset ${name}'s username to Anonymous?`,
+          })
+        )
+          socket.emit("staff rename", { targetUserId: user.id });
+      },
+    },
+  ];
+  if (currentUserIsDev) {
+    items.push({
+      icon: "🧊",
+      label: "Freeze / unfreeze input",
+      desc: "Lock their typing without kicking",
+      onClick: () => socket.emit("staff freeze", { targetUserId: user.id }),
+    });
+    if (!user.isDev && !user.isMod)
+      items.push({
+        icon: "🧑‍✈️",
+        label: "Make this user a mod",
+        desc: "Promote this user directly",
+        onClick: async () => {
+          if (
+            await StaffUI.confirm({
+              title: "Make mod",
+              message: `Promote ${name} to moderator? They can moderate immediately.`,
+              confirmText: "Make mod",
+            })
+          )
+            socket.emit("dev grant mod to user", { targetUserId: user.id });
+        },
+      });
+  }
+  StaffUI.menu({
+    title: `Actions: ${name}`,
+    icon: "🛡️",
+    subtitle: "Per-user moderation",
+    groups: [{ items }],
+    onHelp: () => StaffUI.help(staffRole()),
+  });
+}
+
+function openIpBlockPicker(user) {
+  const durs = [
+    { icon: "⏱️", label: "1 hour", value: "1h" },
+    { icon: "🕛", label: "24 hours", value: "24h" },
+    { icon: "📅", label: "7 days", value: "7d" },
+  ];
+  if (currentUserIsDev)
+    durs.push({ icon: "♾️", label: "Permanent", value: "permanent" });
+  StaffUI.menu({
+    title: `IP block: ${user.username || "user"}`,
+    icon: "⛔",
+    subtitle: "Pick a duration",
+    groups: [
+      {
+        items: durs.map((d) => ({
+          icon: d.icon,
+          label: d.label,
+          danger: true,
+          onClick: async () => {
+            if (
+              await StaffUI.confirm({
+                title: "Block IP",
+                message: `Block this user's IP for ${d.label}? They'll be disconnected.`,
+                danger: true,
+                confirmText: "Block IP",
+              })
+            )
+              socket.emit("staff ip block", {
+                targetUserId: user.id,
+                duration: d.value,
+              });
+          },
+        })),
+      },
+    ],
+  });
+}
+
+// ── Room / dev tools panel ───────────────────────────────────────────────────
+function createStaffPanelButton() {
+  const navRight = document.querySelector(".navbar-right");
+  if (!navRight || document.getElementById("staffPanelButton")) return;
+  const button = document.createElement("button");
+  button.id = "staffPanelButton";
+  button.type = "button";
+  button.className = "staff-nav-btn";
+  button.textContent = currentUserIsDev ? "🛠 Dev" : "🛡 Staff";
+  button.title = "Staff tools";
+  button.addEventListener("click", openStaffPanel);
+  const leaveBtn = navRight.querySelector(".leave-room");
+  if (leaveBtn) navRight.insertBefore(button, leaveBtn);
+  else navRight.appendChild(button);
+}
+
+function openStaffPanel() {
+  if (!window.StaffUI) return;
+  const rid = currentRoomId;
+  const groups = [
+    {
+      title: "This room",
+      items: [
+        {
+          icon: "🧼",
+          label: "Clear Talkoboard",
+          desc: "Wipe the shared drawing board",
+          onClick: () => socket.emit("board clear"),
+        },
+        {
+          icon: currentRoomLocked ? "🔓" : "🔒",
+          label: currentRoomLocked ? "Unlock room" : "Lock room",
+          desc: "Block new joins; current users stay",
+          onClick: () =>
+            socket.emit("staff lock room", {
+              roomId: rid,
+              locked: !currentRoomLocked,
+            }),
+        },
+        {
+          icon: "🐢",
+          label: currentRoomSlow ? "Slow mode: turn OFF" : "Slow mode: turn ON",
+          desc: "Throttle the room's update speed",
+          onClick: () =>
+            socket.emit("staff slow mode", {
+              roomId: rid,
+              enabled: !currentRoomSlow,
+            }),
+        },
+        {
+          icon: "🗑️",
+          label: "Close room",
+          danger: true,
+          desc: "Kick everyone and delete the room",
+          onClick: async () => {
+            if (
+              await StaffUI.confirm({
+                title: "Close room",
+                message: "Kick everyone and delete this room?",
+                danger: true,
+                confirmText: "Close room",
+              })
+            )
+              socket.emit("staff close room", { roomId: rid });
+          },
+        },
+      ],
+    },
+  ];
+
+  // Appearance (moved out of the navbar to keep it tidy on mobile)
+  const appearanceItems = [
+    {
+      icon: currentUserIsHidden ? "🙈" : "👁️",
+      label: currentUserIsHidden ? "Show my flair" : "Hide my flair",
+      desc: currentUserIsDev
+        ? "Hide/show your crown, color and glow"
+        : "Hide/show your MOD badge",
+      onClick: () =>
+        socket.emit("dev set hide", { isHidden: !currentUserIsHidden }),
+    },
+  ];
+  if (currentUserIsDev) {
+    appearanceItems.push({
+      icon: "🫥",
+      label: currentUserIsVanished ? "Vanish: ON " : "Vanish: OFF ",
+      desc: "Invisible to non-devs; takes no room slot",
+      onClick: () =>
+        socket.emit("dev set vanish", { isVanished: !currentUserIsVanished }),
+    });
+    appearanceItems.push({
+      icon: "🎨",
+      label: "Custom name color…",
+      desc: "Set your chat text color",
+      onClick: async () => {
+        const color = await StaffUI.prompt({
+          title: "Custom name color",
+          icon: "🎨",
+          fields: [
+            {
+              name: "value",
+              label: "Pick a color",
+              type: "color",
+              value: localStorage.getItem("talkomatic_devColor") || "#ff9800",
+            },
+          ],
+          confirmText: "Apply",
+        });
+        if (color) {
+          localStorage.setItem("talkomatic_devColor", color);
+          socket.emit("dev set color", { color });
+          applyDevColor(color);
+        }
+      },
+    });
+  }
+  groups.push({ title: "Appearance", items: appearanceItems });
+
+  if (currentUserIsDev) {
+    groups.push({
+      title: "Dev tools (this room)",
+      items: [
+        {
+          icon: "📢",
+          label: "Megaphone this room…",
+          desc: "Announcement banner to this room",
+          onClick: async () => {
+            const m = await StaffUI.prompt({
+              title: "Megaphone (this room)",
+              icon: "📢",
+              fields: [
+                {
+                  name: "value",
+                  label: "Announcement",
+                  type: "textarea",
+                  maxLength: 300,
+                  required: true,
+                },
+              ],
+              confirmText: "Broadcast",
+            });
+            if (m)
+              socket.emit("staff megaphone", {
+                scope: "room",
+                roomId: rid,
+                message: m,
+              });
+          },
+        },
+        {
+          icon: "🎉",
+          label: "Party mode",
+          desc: "Confetti + party horn for everyone",
+          onClick: () => socket.emit("staff party", { roomId: rid }),
+        },
+        {
+          icon: "⭐",
+          label: currentRoomSpotlight ? "Remove spotlight" : "Spotlight room",
+          desc: "Pin to top of lobby with an Official badge",
+          onClick: () =>
+            socket.emit("staff spotlight", {
+              roomId: rid,
+              on: !currentRoomSpotlight,
+            }),
+        },
+        {
+          icon: "📊",
+          label: "Server HUD (toggle)",
+          desc: "Live server stats overlay",
+          onClick: toggleDevHud,
+        },
+      ],
+    });
+    groups.push({
+      title: "Dev tools (global)",
+      items: [
+        {
+          icon: "🚩",
+          label: "Feature flags…",
+          desc: "Word filter / room creation / limit",
+          onClick: () => socket.emit("dev get flags"),
+        },
+        {
+          icon: "🛠️",
+          label: "Maintenance mode (toggle)",
+          desc: "Pause new rooms + joins",
+          onClick: () => socket.emit("dev set maintenance", {}),
+        },
+        {
+          icon: "💣",
+          label: "NUKE all rooms",
+          danger: true,
+          desc: "Emergency clear of every room",
+          onClick: async () => {
+            const r = await StaffUI.prompt({
+              title: "Nuke all rooms",
+              icon: "💣",
+              danger: true,
+              message:
+                "This clears EVERY room and removes ALL users. Type NUKE to confirm.",
+              fields: [
+                {
+                  name: "value",
+                  label: "Type NUKE",
+                  placeholder: "NUKE",
+                  required: true,
+                },
+              ],
+              confirmText: "NUKE",
+            });
+            if (r && r.trim().toUpperCase() === "NUKE")
+              socket.emit("staff nuke", { confirm: true });
+            else if (r != null)
+              notify(
+                "Nuke cancelled. The confirmation text did not match.",
+                "info",
+              );
+          },
+        },
+      ],
+    });
+  }
+
+  groups.push({
+    title: "Accountability",
+    items: [
+      {
+        icon: "📋",
+        label: "Open Mod Log",
+        desc: "Every staff action + identity change",
+        onClick: () => window.open("/mod.html", "_blank"),
+      },
+    ],
+  });
+
+  StaffUI.menu({
+    title: "Staff panel",
+    icon: currentUserIsDev ? "🛠️" : "🛡️",
+    subtitle: currentUserIsDev ? "Dev tools" : "Mod tools",
+    groups,
+    onHelp: () => StaffUI.help(staffRole()),
+    wide: true,
+  });
+}
+
+socket.on("dev flags", (flags) => {
+  if (!flags || !window.StaffUI) return;
+  StaffUI.menu({
+    title: "Feature flags",
+    icon: "🚩",
+    subtitle: "Live server configuration",
+    groups: [
+      {
+        items: [
+          {
+            icon: flags.wordFilter ? "✅" : "⛔",
+            label: `Word filter (global): ${flags.wordFilter ? "ON" : "OFF"}`,
+            desc: "Toggle the global word filter",
+            onClick: () =>
+              socket.emit("dev set flags", { wordFilter: !flags.wordFilter }),
+          },
+          {
+            icon: flags.roomCreation ? "✅" : "⛔",
+            label: `Room creation: ${flags.roomCreation ? "ON" : "OFF"}`,
+            desc: "Allow users to create rooms",
+            onClick: () =>
+              socket.emit("dev set flags", {
+                roomCreation: !flags.roomCreation,
+              }),
+          },
+          {
+            icon: "🔢",
+            label: `Room limit: ${flags.baseMaxRooms}`,
+            desc: "How many rooms can exist at once",
+            onClick: async () => {
+              const v = await StaffUI.prompt({
+                title: "Room limit",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Base room limit",
+                    type: "number",
+                    value: String(flags.baseMaxRooms),
+                    required: true,
+                  },
+                ],
+              });
+              const n = parseInt(v, 10);
+              if (Number.isFinite(n))
+                socket.emit("dev set flags", { baseMaxRooms: n });
+            },
+          },
+          {
+            icon: "👥",
+            label: `Max room size: ${flags.maxRoomCapacity} people`,
+            desc: "How many users fit in one room (2 to 50)",
+            onClick: async () => {
+              const v = await StaffUI.prompt({
+                title: "Max room size",
+                icon: "👥",
+                message: "How many people can be in a single room (2 to 50)?",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Max users per room",
+                    type: "number",
+                    value: String(flags.maxRoomCapacity),
+                    required: true,
+                  },
+                ],
+              });
+              const n = parseInt(v, 10);
+              if (Number.isFinite(n))
+                socket.emit("dev set flags", { maxRoomCapacity: n });
+            },
+          },
+          {
+            icon: flags.maintenance ? "🛠️" : "🟢",
+            label: `Maintenance: ${flags.maintenance ? "ON" : "OFF"}`,
+            desc: "Toggle maintenance mode",
+            onClick: () => socket.emit("dev set maintenance", {}),
+          },
+        ],
+      },
+    ],
+  });
+});
+
+// ── Dev HUD overlay ──────────────────────────────────────────────────────────
+function toggleDevHud() {
+  let hud = document.getElementById("devHud");
+  if (hud) {
+    hud.remove();
+    if (hudInterval) clearInterval(hudInterval);
+    hudInterval = null;
+    return;
+  }
+  hud = document.createElement("div");
+  hud.id = "devHud";
+  hud.textContent = "HUD: loading…";
+  document.body.appendChild(hud);
+  const poll = () => socket.emit("dev request hud");
+  poll();
+  hudInterval = setInterval(poll, 3000);
+}
+
+socket.on("dev hud stats", (s) => {
+  const hud = document.getElementById("devHud");
+  if (!hud || !s) return;
+  hud.textContent =
+    "SERVER HUD\n" +
+    `sockets  ${s.sockets}\n` +
+    `rooms    ${s.rooms}\n` +
+    `users    ${s.users}\n` +
+    `heap     ${s.heapMB} MB\n` +
+    `soloTTL  ${s.soloTTL}s\n` +
+    `boards   ${s.boards}\n` +
+    `tokens   ${s.tokens}\n` +
+    `devs     ${s.devs}`;
+});
+
+// ── Room flag chips (LOCKED / SLOW / OFFICIAL) ───────────────────────────────
+function applyRoomFlags(data) {
+  if (!data) return;
+  if (typeof data.locked === "boolean") currentRoomLocked = data.locked;
+  if (typeof data.slowMode === "boolean") currentRoomSlow = data.slowMode;
+  if (typeof data.spotlight === "boolean")
+    currentRoomSpotlight = data.spotlight;
+  const navbar = document.querySelector(".second-navbar");
+  if (!navbar) return;
+  let flags = document.getElementById("roomStaffFlags");
+  if (!flags) {
+    flags = document.createElement("div");
+    flags.id = "roomStaffFlags";
+    navbar.appendChild(flags);
+  }
+  flags.textContent = "";
+  const add = (text, cls) => {
+    const s = document.createElement("span");
+    s.textContent = text;
+    s.className = "room-flag " + cls;
+    flags.appendChild(s);
+  };
+  if (currentRoomSpotlight) add("★ OFFICIAL", "f-official");
+  if (currentRoomLocked) add("LOCKED", "f-locked");
+  if (currentRoomSlow) add("SLOW", "f-slow");
+}
+
+// ── Spectate (read-only) ─────────────────────────────────────────────────────
+function renderSpectate(data) {
+  isSpectating = true;
+  currentRoomId = data.roomId;
+  currentRoomName = data.roomName;
+  currentRoomLayout = data.layout || currentRoomLayout;
+  const rt = document.querySelector(".second-navbar .room-type");
+  const rn = document.querySelector(".second-navbar .room-name");
+  const rid = document.querySelector(".second-navbar .room-id");
+  if (rt) rt.textContent = `${data.roomType || "public"} room`;
+  if (rn) rn.textContent = data.roomName || "*";
+  if (rid) rid.textContent = data.roomId || "*";
+  const c = document.querySelector(".chat-container");
+  if (c) {
+    c.innerHTML = "";
+    (data.users || []).forEach((u) => createUserRow(u, c));
+  }
+  adjustLayout();
+  if (data.currentMessages) updateCurrentMessages(data.currentMessages);
+  const invite = document.querySelector(".invite-section");
+  if (invite) invite.style.display = "none";
+  let banner = document.getElementById("spectateBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "spectateBanner";
+    banner.textContent = "👁 SPECTATING (read-only). You are invisible.";
+    document.body.appendChild(banner);
+  }
+}
+
+socket.on("spectate joined", (data) => renderSpectate(data));
+socket.on("spectate ended", () => {
+  isSpectating = false;
+  window.location.href = "/index.html";
+});
+
+// ── Staff events received by everyone ────────────────────────────────────────
+socket.on("staff warning", (data) =>
+  notify((data && data.message) || "Please follow the room rules.", "warning", {
+    title: "⚠ Staff warning",
+    timeout: 12000,
+  }),
+);
+socket.on("staff frozen", (data) => {
+  const frozen = !!(data && data.frozen);
+  if (chatInput) {
+    chatInput.contentEditable = !frozen && !isSpectating;
+    chatInput.style.opacity = frozen ? "0.5" : "1";
+  }
+  notify(
+    frozen
+      ? "Your input has been frozen by staff."
+      : "Your input has been unfrozen.",
+    frozen ? "warning" : "success",
+  );
+});
+socket.on("buffer wiped", () => {
+  if (chatInput) {
+    selfRawText = "";
+    chatInput.innerHTML = "";
+    chatInput.textContent = "";
+  }
+  lastSentMessage = "";
+  notify("Your message was cleared by staff.", "info");
+});
+socket.on("user renamed", (data) => {
+  if (!data || !data.userId) return;
+  const row = document.querySelector(
+    `.chat-row[data-user-id="${data.userId}"]`,
+  );
+  if (!row) return;
+  const info = row.querySelector(".user-info");
+  if (!info) return;
+  for (const node of Array.from(info.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      node.textContent = `${data.username} / ${data.location}`;
+      return;
+    }
+  }
+  info.appendChild(
+    document.createTextNode(`${data.username} / ${data.location}`),
+  );
+});
+socket.on("room lock status", (data) => {
+  currentRoomLocked = !!(data && data.locked);
+  applyRoomFlags({ locked: currentRoomLocked });
+  notify(
+    currentRoomLocked
+      ? "This room is now locked. No new joins."
+      : "This room is unlocked.",
+    "info",
+  );
+});
+socket.on("room slow mode", (data) => {
+  currentRoomSlow = !!(data && data.enabled);
+  applyRoomFlags({ slowMode: currentRoomSlow });
+  notify(
+    currentRoomSlow ? "Slow mode enabled." : "Slow mode disabled.",
+    "info",
+  );
+});
+socket.on("megaphone", (data) => {
+  if (!data || !data.message) return;
+  notify(data.message, "warning", {
+    title: "📢 Announcement",
+    fullWidth: true,
+    timeout: 14000,
+  });
+});
+socket.on("party mode", () => {
+  try {
+    triggerDevConfetti();
+  } catch (_) {}
+  try {
+    if (!partyHornAudio) partyHornAudio = new Audio("audio/party-horn.mp3");
+    partyHornAudio.currentTime = 0;
+    partyHornAudio.play().catch(() => {});
+  } catch (_) {}
+});
+socket.on("maintenance status", (data) => {
+  if (data && data.enabled)
+    notify(
+      "Talkomatic is in maintenance mode. New rooms and joins are paused.",
+      "warning",
+      {
+        title: "🛠 Maintenance",
+        timeout: 8000,
+      },
+    );
+});
+socket.on("staff action result", (data) => {
+  if (!data) return;
+  notify(
+    (data.ok ? "Done: " : "Failed: ") + data.action,
+    data.ok ? "success" : "error",
+  );
+});
+socket.on("staff revoked", () => {
+  localStorage.removeItem("talkomatic_modKey");
+  currentUserIsMod = false;
+  notify("Your mod key was revoked.", "warning", { timeout: 6000 });
+  setTimeout(() => window.location.reload(), 1500);
+});
+
+// ── Staff key entry (no console needed) ──────────────────────────────────────
+let pendingStaffKey = null;
+async function openStaffKeyEntry() {
+  if (!window.StaffUI) return;
+  const key = await StaffUI.prompt({
+    title: "Staff access",
+    icon: "🔑",
+    subtitle: "Enter your dev or mod key",
+    message:
+      "Your key is verified on the server and saved to this browser. It never appears in the URL.",
+    fields: [
+      {
+        name: "value",
+        label: "Staff key",
+        type: "password",
+        placeholder: "paste your key",
+        required: true,
+      },
+    ],
+    confirmText: "Unlock",
+  });
+  if (key) {
+    pendingStaffKey = key;
+    socket.emit("staff validate key", { key });
+  }
+}
+socket.on("staff key result", (d) => {
+  if (!d || !d.role) {
+    notify(
+      d && d.throttled
+        ? "Too many attempts. Wait a few minutes."
+        : "That key was not recognized.",
+      "error",
+    );
+    pendingStaffKey = null;
+    return;
+  }
+  if (d.role === "dev")
+    localStorage.setItem("talkomatic_devKey", pendingStaffKey);
+  else localStorage.setItem("talkomatic_modKey", pendingStaffKey);
+  pendingStaffKey = null;
+  notify(
+    `Key accepted. You are ${d.role}${d.label ? " (" + d.label + ")" : ""}. Reloading…`,
+    "success",
+  );
+  setTimeout(() => window.location.reload(), 1200);
+});
+socket.on("you are now mod", (d) => {
+  if (!d || !d.key) return;
+  localStorage.setItem("talkomatic_modKey", d.key);
+  notify("You've been promoted to Moderator! Reloading…", "success", {
+    title: "🛡️ You are now a mod",
+    timeout: 4000,
+  });
+  setTimeout(() => window.location.reload(), 1600);
+});
+// Open the key-entry modal when the page is opened with #staff in the URL
+if (window.location.hash === "#staff") setTimeout(openStaffKeyEntry, 600);
+window.addEventListener("hashchange", () => {
+  if (window.location.hash === "#staff") openStaffKeyEntry();
+});
+
+// Room-specific staff styles (badges, nav button, HUD, flags, spectate banner)
+(function injectRoomStaffStyles() {
+  const css = `
+    .mod-badge{display:inline-block;background:#00bcd4;color:#003;font-size:9px;font-weight:bold;padding:1px 5px;border-radius:8px;margin:0 5px 0 0;letter-spacing:.5px;vertical-align:middle;}
+    .staff-action-button{background:none;border:none;cursor:pointer;font-size:13px;margin-left:4px;opacity:.75;}
+    .staff-action-button:hover{opacity:1;}
+    .staff-nav-btn{display:flex;align-items:center;gap:6px;margin-right:8px;padding:6px 12px;border:1px solid #ff9800;border-radius:6px;background:#1a1206;color:#ff9800;cursor:pointer;font-size:12px;font-weight:600;}
+    .staff-nav-btn:hover{background:#241a08;}
+    #roomStaffFlags{display:flex;gap:6px;align-items:center;margin-left:8px;}
+    .room-flag{font-size:10px;font-weight:bold;padding:2px 6px;border-radius:10px;}
+    .room-flag.f-official{background:#ffd700;color:#3a2c00;}
+    .room-flag.f-locked{background:#e5484d;color:#fff;}
+    .room-flag.f-slow{background:#ff9800;color:#3a2c00;}
+    #devHud{position:fixed;bottom:12px;left:12px;z-index:100000;background:rgba(10,11,14,.92);border:1px solid #ff9800;border-radius:10px;color:#ffb14d;font-family:monospace;font-size:12px;padding:12px 14px;line-height:1.6;pointer-events:none;white-space:pre;box-shadow:0 8px 30px rgba(0,0,0,.5);}
+    #spectateBanner{position:fixed;top:0;left:0;right:0;z-index:99998;background:#5c2d91;color:#fff;text-align:center;font-size:13px;font-weight:bold;padding:6px 10px;letter-spacing:.5px;box-sizing:border-box;}
+  `;
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.appendChild(style);
+})();

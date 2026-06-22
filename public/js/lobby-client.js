@@ -417,6 +417,7 @@ const socket = io({
   withCredentials: true,
   auth: {
     devKey: localStorage.getItem("talkomatic_devKey") || undefined,
+    modKey: localStorage.getItem("talkomatic_modKey") || undefined,
   },
 });
 
@@ -455,6 +456,8 @@ const MAX_LOCATION_LENGTH = 20;
 const MAX_ROOM_NAME_LENGTH = 25;
 let devLobbyCodes = {};
 let statsModal = null;
+let currentUserIsDev = false;
+let currentUserIsMod = false;
 
 // ============================================================================
 // 6. SIGN-IN HELPERS
@@ -753,6 +756,9 @@ socket.on("room created", (roomId) => {
 // ============================================================================
 
 socket.on("signin status", (data) => {
+  currentUserIsDev = !!data.isDev;
+  currentUserIsMod = !!data.isMod;
+  if (currentUserIsDev) ensureDevPanelButton();
   if (data.isSignedIn) {
     currentUsername = data.username;
     currentLocation = data.location;
@@ -829,9 +835,11 @@ function createRoomElement(room) {
   roomElement.classList.add("room");
   roomElement.dataset.roomId = room.id;
   roomElement.dataset.roomType = room.type;
+  if (room.spotlight) roomElement.classList.add("spotlight-room");
 
   const joinableCount = getJoinableCount(room);
-  const isFull = !!room.isFull || joinableCount >= 5;
+  const capacity = room.capacity || 5;
+  const isFull = !!room.isFull || joinableCount >= capacity;
 
   const enterButton = document.createElement("button");
   enterButton.classList.add("enter-button");
@@ -851,7 +859,13 @@ function createRoomElement(room) {
 
   const roomNameDiv = document.createElement("div");
   roomNameDiv.classList.add("room-name");
-  roomNameDiv.textContent = `${room.name} (${joinableCount}/5 People)`;
+  roomNameDiv.textContent = `${room.name} (${joinableCount}/${capacity} People)`;
+  if (room.spotlight) {
+    const star = document.createElement("span");
+    star.className = "official-badge";
+    star.textContent = "★ OFFICIAL";
+    roomNameDiv.prepend(star);
+  }
 
   const roomDetailsDiv = document.createElement("div");
   roomDetailsDiv.classList.add("room-details");
@@ -881,6 +895,13 @@ function createRoomElement(room) {
       userDiv.appendChild(crown);
     }
 
+    if (user.isMod && !user.isDev && !user.isHidden) {
+      const mb = document.createElement("span");
+      mb.className = "mod-lobby-badge";
+      mb.textContent = "MOD";
+      userDiv.appendChild(mb);
+    }
+
     userDiv.appendChild(userNameSpan);
     userDiv.append(` / ${user.location}`);
 
@@ -902,6 +923,34 @@ function createRoomElement(room) {
   roomTop.appendChild(roomInfo);
   roomElement.appendChild(enterButton);
   roomElement.appendChild(roomTop);
+
+  // Dev-only per-room controls: spectate (read-only) and spotlight toggle
+  if (currentUserIsDev) {
+    const devRow = document.createElement("div");
+    devRow.className = "lobby-dev-controls";
+
+    const spectateBtn = document.createElement("button");
+    spectateBtn.type = "button";
+    spectateBtn.className = "lobby-dev-btn";
+    spectateBtn.textContent = "👁 Spectate";
+    spectateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      window.location.href = `/room.html?roomId=${room.id}&spectate=1`;
+    });
+
+    const spotBtn = document.createElement("button");
+    spotBtn.type = "button";
+    spotBtn.className = "lobby-dev-btn";
+    spotBtn.textContent = room.spotlight ? "★ Unspotlight" : "★ Spotlight";
+    spotBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      socket.emit("staff spotlight", { roomId: room.id, on: !room.spotlight });
+    });
+
+    devRow.appendChild(spectateBtn);
+    devRow.appendChild(spotBtn);
+    roomElement.appendChild(devRow);
+  }
 
   return roomElement;
 }
@@ -925,6 +974,9 @@ function getRoomTypeDisplay(type) {
 
 function sortRoomsByActivity(rooms) {
   return rooms.slice().sort((a, b) => {
+    // Spotlighted ("Official") rooms are always pinned to the top
+    if (!!a.spotlight !== !!b.spotlight) return a.spotlight ? -1 : 1;
+
     const aCount = getJoinableCount(a);
     const bCount = getJoinableCount(b);
 
@@ -1054,3 +1106,750 @@ window.addEventListener("beforeunload", () => {
     statsModal.close();
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// 14. DEV / STAFF UI (lobby) — built on the shared StaffUI kit. The server
+// validates the dev key on every action; this layer is presentation only.
+// ════════════════════════════════════════════════════════════════════════════
+
+let manageKeysOpen = false;
+
+function lobbyNotify(message, type, opts) {
+  if (window.StaffUI)
+    window.StaffUI.toast(
+      message,
+      Object.assign({ type: type || "info" }, opts || {}),
+    );
+}
+
+function ensureDevPanelButton() {
+  if (document.getElementById("devPanelButton")) return;
+  const btn = document.createElement("button");
+  btn.id = "devPanelButton";
+  btn.type = "button";
+  btn.textContent = "🛠 Dev Panel";
+  btn.title = "Dev tools";
+  btn.addEventListener("click", openDevPanel);
+  document.body.appendChild(btn);
+}
+
+function openDevPanel() {
+  if (!window.StaffUI) return;
+  StaffUI.menu({
+    title: "Dev panel",
+    icon: "🛠️",
+    subtitle: "Global staff tools",
+    wide: true,
+    onHelp: () => StaffUI.help("dev"),
+    groups: [
+      {
+        title: "Moderators",
+        items: [
+          {
+            icon: "➕",
+            label: "Grant mod key…",
+            desc: "Create a key for a new mod (shown once)",
+            onClick: async () => {
+              const label = await StaffUI.prompt({
+                title: "Grant mod key",
+                icon: "➕",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Mod's name / label",
+                    placeholder: "e.g. Alice",
+                    required: true,
+                    maxLength: 40,
+                  },
+                ],
+                confirmText: "Generate key",
+              });
+              if (label) socket.emit("dev grant mod", { label });
+            },
+          },
+          {
+            icon: "🗂️",
+            label: "Manage / revoke mod keys…",
+            desc: "List current mods and revoke instantly",
+            onClick: () => {
+              manageKeysOpen = true;
+              socket.emit("dev list mod keys");
+            },
+          },
+        ],
+      },
+      {
+        title: "Broadcast",
+        items: [
+          {
+            icon: "📰",
+            label: "Lobby ticker…",
+            desc: "Editable banner at the top of the lobby",
+            onClick: async () => {
+              const msg = await StaffUI.prompt({
+                title: "Lobby ticker",
+                icon: "📰",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Ticker message (blank to clear)",
+                    type: "textarea",
+                    maxLength: 200,
+                  },
+                ],
+                confirmText: "Set ticker",
+              });
+              if (msg !== null) socket.emit("dev set ticker", { message: msg });
+            },
+          },
+          {
+            icon: "📢",
+            label: "Megaphone everywhere…",
+            desc: "Announcement to all rooms + lobby",
+            onClick: async () => {
+              const msg = await StaffUI.prompt({
+                title: "Megaphone (everywhere)",
+                icon: "📢",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Announcement",
+                    type: "textarea",
+                    maxLength: 300,
+                    required: true,
+                  },
+                ],
+                confirmText: "Broadcast",
+              });
+              if (msg)
+                socket.emit("staff megaphone", { scope: "all", message: msg });
+            },
+          },
+        ],
+      },
+      {
+        title: "Server",
+        items: [
+          {
+            icon: "🚩",
+            label: "Feature flags…",
+            desc: "Word filter / room creation / limit",
+            onClick: () => socket.emit("dev get flags"),
+          },
+          {
+            icon: "🛠️",
+            label: "Maintenance mode (toggle)",
+            desc: "Pause new rooms + joins",
+            onClick: () => socket.emit("dev set maintenance", {}),
+          },
+          {
+            icon: "🧯",
+            label: "Clear bot blacklist",
+            desc: "Lift all bot-blacklist entries",
+            onClick: async () => {
+              if (
+                await StaffUI.confirm({
+                  title: "Clear blacklist",
+                  message: "Clear the entire bot blacklist?",
+                })
+              )
+                socket.emit("dev clear blacklist");
+            },
+          },
+          {
+            icon: "🔓",
+            label: "Unblock an IP…",
+            desc: "Remove a specific IP block",
+            onClick: async () => {
+              const ip = await StaffUI.prompt({
+                title: "Unblock IP",
+                fields: [
+                  { name: "value", label: "IP address", required: true },
+                ],
+              });
+              if (ip) socket.emit("dev unblock ip", { ip });
+            },
+          },
+          {
+            icon: "💣",
+            label: "NUKE all rooms",
+            danger: true,
+            desc: "Emergency clear of every room",
+            onClick: async () => {
+              const r = await StaffUI.prompt({
+                title: "Nuke all rooms",
+                icon: "💣",
+                danger: true,
+                message:
+                  "Clears EVERY room and removes ALL users. Type NUKE to confirm.",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Type NUKE",
+                    placeholder: "NUKE",
+                    required: true,
+                  },
+                ],
+                confirmText: "NUKE",
+              });
+              if (r && r.trim().toUpperCase() === "NUKE")
+                socket.emit("staff nuke", { confirm: true });
+              else if (r != null)
+                lobbyNotify("Nuke cancelled. The text did not match.", "info");
+            },
+          },
+        ],
+      },
+      {
+        title: "Accountability",
+        items: [
+          {
+            icon: "📋",
+            label: "Open Mod Log",
+            desc: "Every staff action + identity change",
+            onClick: () => window.open("/mod.html", "_blank"),
+          },
+        ],
+      },
+    ],
+  });
+}
+
+// ── Mod key results ──────────────────────────────────────────────────────────
+socket.on("dev mod granted", (data) => {
+  if (!data || !data.key || !window.StaffUI) return;
+  const cmd = `localStorage.setItem('talkomatic_modKey','${data.key}')`;
+  const wrap = StaffUI.el("div");
+  wrap.appendChild(
+    StaffUI.el("p", {
+      text: `New mod key for "${data.label}". This is shown ONCE, so copy it now and send it to them.`,
+    }),
+  );
+  const input = StaffUI.el("input", {
+    class: "tk-input",
+    type: "text",
+    readonly: "readonly",
+    value: data.key,
+  });
+  input.addEventListener("focus", () => input.select());
+  wrap.appendChild(input);
+  wrap.appendChild(
+    StaffUI.el("p", {
+      class: "tk-help",
+      text: "They activate it by running this in their browser console, then reloading:",
+    }),
+  );
+  const code = StaffUI.el("div", {
+    style:
+      "font-family:monospace;font-size:11px;color:#ffd700;background:#0e0f12;border:1px solid #23262e;border-radius:7px;padding:8px;word-break:break-all;margin-top:4px;",
+  });
+  code.textContent = cmd;
+  wrap.appendChild(code);
+  StaffUI.modal({
+    title: "Mod key granted",
+    icon: "🔑",
+    wide: true,
+    body: wrap,
+    actions: [
+      {
+        label: "Copy key",
+        kind: "ghost",
+        onClick: () => {
+          StaffUI.copy(data.key);
+          lobbyNotify("Key copied.", "success");
+          return false;
+        },
+      },
+      {
+        label: "Copy command",
+        kind: "ghost",
+        onClick: () => {
+          StaffUI.copy(cmd);
+          lobbyNotify("Command copied.", "success");
+          return false;
+        },
+      },
+      { label: "Done", kind: "primary", onClick: () => {} },
+    ],
+  });
+});
+
+socket.on("dev mod keys", (keys) => {
+  if (!manageKeysOpen || !window.StaffUI) return;
+  const list = Array.isArray(keys) ? keys : [];
+  const items = list.length
+    ? list.map((k) => ({
+        icon: "🛡️",
+        label: k.label,
+        desc: "key " + k.hash.slice(0, 12) + "…",
+        danger: true,
+        keepOpen: true,
+        onClick: async () => {
+          if (
+            await StaffUI.confirm({
+              title: "Revoke mod",
+              message: `Revoke "${k.label}"? They are downgraded instantly.`,
+              danger: true,
+              confirmText: "Revoke",
+            })
+          )
+            socket.emit("dev revoke mod", { hash: k.hash });
+        },
+      }))
+    : [
+        {
+          icon: "·",
+          label: "No mod keys yet",
+          desc: "Use Grant mod key to create one",
+        },
+      ];
+  StaffUI.menu({
+    title: "Mod keys",
+    icon: "🗂️",
+    subtitle: `${list.length} active`,
+    groups: [{ items }],
+    onHelp: () => StaffUI.help("dev"),
+  });
+});
+
+socket.on("dev flags", (flags) => {
+  if (!flags || !window.StaffUI) return;
+  StaffUI.menu({
+    title: "Feature flags",
+    icon: "🚩",
+    subtitle: "Live server configuration",
+    groups: [
+      {
+        items: [
+          {
+            icon: flags.wordFilter ? "✅" : "⛔",
+            label: `Word filter (global): ${flags.wordFilter ? "ON" : "OFF"}`,
+            desc: "Toggle the global word filter",
+            onClick: () =>
+              socket.emit("dev set flags", { wordFilter: !flags.wordFilter }),
+          },
+          {
+            icon: flags.roomCreation ? "✅" : "⛔",
+            label: `Room creation: ${flags.roomCreation ? "ON" : "OFF"}`,
+            desc: "Allow users to create rooms",
+            onClick: () =>
+              socket.emit("dev set flags", {
+                roomCreation: !flags.roomCreation,
+              }),
+          },
+          {
+            icon: "🔢",
+            label: `Room limit: ${flags.baseMaxRooms}`,
+            desc: "How many rooms can exist at once",
+            onClick: async () => {
+              const v = await StaffUI.prompt({
+                title: "Room limit",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Base room limit",
+                    type: "number",
+                    value: String(flags.baseMaxRooms),
+                    required: true,
+                  },
+                ],
+              });
+              const n = parseInt(v, 10);
+              if (Number.isFinite(n))
+                socket.emit("dev set flags", { baseMaxRooms: n });
+            },
+          },
+          {
+            icon: "👥",
+            label: `Max room size: ${flags.maxRoomCapacity} people`,
+            desc: "How many users fit in one room (2 to 50)",
+            onClick: async () => {
+              const v = await StaffUI.prompt({
+                title: "Max room size",
+                icon: "👥",
+                message: "How many people can be in a single room (2 to 50)?",
+                fields: [
+                  {
+                    name: "value",
+                    label: "Max users per room",
+                    type: "number",
+                    value: String(flags.maxRoomCapacity),
+                    required: true,
+                  },
+                ],
+              });
+              const n = parseInt(v, 10);
+              if (Number.isFinite(n))
+                socket.emit("dev set flags", { maxRoomCapacity: n });
+            },
+          },
+          {
+            icon: flags.maintenance ? "🛠️" : "🟢",
+            label: `Maintenance: ${flags.maintenance ? "ON" : "OFF"}`,
+            desc: "Toggle maintenance mode",
+            onClick: () => socket.emit("dev set maintenance", {}),
+          },
+        ],
+      },
+    ],
+  });
+});
+
+socket.on("staff action result", (data) => {
+  if (data)
+    lobbyNotify(
+      (data.ok ? "Done: " : "Failed: ") + data.action,
+      data.ok ? "success" : "error",
+    );
+});
+
+socket.on("staff revoked", () => {
+  localStorage.removeItem("talkomatic_modKey");
+  currentUserIsMod = false;
+  lobbyNotify("Your mod key was revoked.", "warning", { timeout: 6000 });
+  setTimeout(() => window.location.reload(), 1500);
+});
+
+// ── Staff key entry (no console needed) ──────────────────────────────────────
+let pendingStaffKey = null;
+async function openStaffKeyEntry() {
+  if (!window.StaffUI) return;
+  const key = await StaffUI.prompt({
+    title: "Staff access",
+    icon: "🔑",
+    subtitle: "Enter your dev or mod key",
+    message:
+      "All keys are verified, logged, and monitored on our servers. Sharing your key with anyone will result in a permanent ban from Talkomatic.",
+    fields: [
+      {
+        name: "value",
+        label: "Staff key",
+        type: "password",
+        placeholder: "paste your key",
+        required: true,
+      },
+    ],
+    confirmText: "Unlock",
+  });
+  if (key) {
+    pendingStaffKey = key;
+    socket.emit("staff validate key", { key });
+  }
+}
+socket.on("staff key result", (d) => {
+  if (!d || !d.role) {
+    lobbyNotify(
+      d && d.throttled
+        ? "Too many attempts. Wait a few minutes."
+        : "That key was not recognized.",
+      "error",
+    );
+    pendingStaffKey = null;
+    return;
+  }
+  if (d.role === "dev")
+    localStorage.setItem("talkomatic_devKey", pendingStaffKey);
+  else localStorage.setItem("talkomatic_modKey", pendingStaffKey);
+  pendingStaffKey = null;
+  lobbyNotify(
+    `Key accepted. You are ${d.role}${d.label ? " (" + d.label + ")" : ""}. Reloading…`,
+    "success",
+  );
+  setTimeout(() => window.location.reload(), 1200);
+});
+socket.on("you are now mod", (d) => {
+  if (!d || !d.key) return;
+  localStorage.setItem("talkomatic_modKey", d.key);
+  lobbyNotify("You've been promoted to Moderator! Reloading…", "success", {
+    title: "🛡️ You are now a mod",
+    timeout: 4000,
+  });
+  setTimeout(() => window.location.reload(), 1600);
+});
+// Key entry is reachable from the "Staff Access" link in the lobby menu, by
+// opening the lobby with #staff in the URL, or via the deep link from mod.html.
+const staffLoginLink = document.getElementById("staffLoginLink");
+if (staffLoginLink)
+  staffLoginLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    openStaffKeyEntry();
+  });
+if (window.location.hash === "#staff") setTimeout(openStaffKeyEntry, 700);
+window.addEventListener("hashchange", () => {
+  if (window.location.hash === "#staff") openStaffKeyEntry();
+});
+
+// ── Lobby ticker bar ─────────────────────────────────────────────────────────
+function setLobbyTicker(message) {
+  let bar = document.getElementById("lobbyTickerBar");
+  if (!message) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "lobbyTickerBar";
+    document.body.appendChild(bar);
+  }
+  bar.textContent = "📣 " + message;
+}
+socket.on("lobby ticker", (data) =>
+  setLobbyTicker((data && data.message) || ""),
+);
+
+socket.on("megaphone", (data) => {
+  if (data && data.message)
+    lobbyNotify(data.message, "warning", {
+      title: "📢 Announcement",
+      fullWidth: true,
+      timeout: 14000,
+    });
+});
+
+socket.on("maintenance status", (data) => {
+  let bar = document.getElementById("lobbyMaintenanceBar");
+  if (data && data.enabled) {
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "lobbyMaintenanceBar";
+      bar.textContent =
+        "🛠 Maintenance mode: creating rooms and joining are paused.";
+      document.body.appendChild(bar);
+    }
+  } else if (bar) {
+    bar.remove();
+  }
+});
+
+// Lobby staff styles (badges, spotlight, dev button, ticker / maintenance bars)
+(function injectLobbyStaffStyles() {
+  const css = `
+    .mod-lobby-badge{display:inline-block;background:#00bcd4;color:#003;font-size:8px;font-weight:bold;padding:1px 4px;border-radius:6px;margin:0 4px;letter-spacing:.5px;vertical-align:middle;}
+    .official-badge{display:inline-block;background:#ffd700;color:#3a2c00;font-size:9px;font-weight:bold;padding:1px 6px;border-radius:8px;margin-right:6px;letter-spacing:.5px;}
+    .room.spotlight-room{border:1px solid #ffd700 !important;box-shadow:0 0 0 1px rgba(255,215,0,.25) inset;}
+    .lobby-dev-controls{display:flex;gap:6px;margin-top:6px;}
+    .lobby-dev-btn{flex:1;background:#15161a;color:#ff9800;border:1px solid #2c2f37;border-radius:6px;padding:5px 6px;font-size:11px;cursor:pointer;font-weight:600;}
+    .lobby-dev-btn:hover{border-color:#ff9800;background:#1d1a12;}
+    #devPanelButton{position:fixed;bottom:16px;right:16px;z-index:99990;background:#1a1206;color:#ff9800;border:1px solid #ff9800;border-radius:22px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.5);}
+    #devPanelButton:hover{background:#241a08;}
+    #lobbyTickerBar{position:fixed;top:0;left:0;right:0;z-index:99980;background:#ff9800;color:#1a1206;text-align:center;font-size:13px;font-weight:700;padding:7px 16px;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;}
+    #lobbyMaintenanceBar{position:fixed;bottom:0;left:0;right:0;z-index:99980;background:#5c2d91;color:#fff;text-align:center;font-size:13px;font-weight:700;padding:7px 16px;box-sizing:border-box;}
+  `;
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+
+
+// ============================================================================
+// 15. 2ND ANNIVERSARY (festive, themed to match Talkomatic). A birthday banner
+//     plus an auto-opening modal with a cake, the story, confetti, the party
+//     horn, and a LIVE community "candles lit" counter shared across everyone.
+//     Auto-opens once per session; revisit anytime from the cake in the menu.
+// ============================================================================
+(function anniversary() {
+  const SEEN_KEY = "tk_anniv_seen_v1";
+  const BANNER_KEY = "tk_anniv_banner_dismissed_v1";
+  let celebrated = sessionStorage.getItem("tk_anniv_celebrated") === "1";
+  let hornAudio = null;
+
+  const css = `
+    .tk-anniv-banner{display:flex;align-items:center;gap:10px;background:#1a1a1a;border:1px solid #ff9800;border-left:4px solid #ff9800;border-radius:2px;padding:10px 12px;margin:0 0 14px;color:#fff;font-size:13.5px;}
+    .tk-anniv-banner .cake{font-size:22px;line-height:1;}
+    .tk-anniv-banner .msg{flex:1;line-height:1.25;min-width:0;font-weight:700;}
+    .tk-anniv-banner .msg small{display:block;font-weight:500;color:#bbb;font-size:11px;}
+    .tk-anniv-banner .celebrate{background:#ff9800;color:#000;border:none;border-radius:2px;padding:7px 13px;font-weight:700;cursor:pointer;font-size:12.5px;white-space:nowrap;}
+    .tk-anniv-banner .celebrate:hover{background:#ffb74d;}
+    .tk-anniv-banner .x{background:none;border:none;color:#888;font-size:18px;cursor:pointer;line-height:1;padding:0 2px;}
+    .tk-anniv-banner .x:hover{color:#ff9800;}
+    .tk-anniv-overlay{position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.82);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:tkAFade .2s ease;}
+    @keyframes tkAFade{from{opacity:0}to{opacity:1}}
+    .tk-anniv-card{position:relative;background:linear-gradient(135deg,#1a1a1a 0%,#2a2a2a 100%);border:2px solid #ff9800;border-radius:12px;max-width:430px;width:100%;max-height:92vh;overflow-y:auto;padding:26px 24px 20px;text-align:center;color:#eee;box-shadow:0 16px 50px rgba(0,0,0,.6);box-sizing:border-box;animation:tkARise .3s ease;}
+    @keyframes tkARise{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+    .tk-anniv-card .ax{position:absolute;top:10px;right:14px;background:#000;border:1px solid #616161;color:#ff9800;font-size:18px;cursor:pointer;line-height:1;width:30px;height:30px;border-radius:2px;}
+    .tk-anniv-card .ax:hover{background:#ff9800;color:#000;}
+    .tk-anniv-tag{display:inline-block;background:#ff9800;color:#000;font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:3px 12px;border-radius:2px;margin-bottom:10px;}
+    .tk-anniv-cake{width:156px;height:148px;display:block;margin:2px auto 8px;}
+    .tk-anniv-flame{transform-origin:center bottom;animation:tkFlick .85s ease-in-out infinite alternate;}
+    .tk-anniv-flame.f2{animation-delay:.42s;}
+    @keyframes tkFlick{from{transform:scaleY(.82) translateY(1px);opacity:.85}to{transform:scaleY(1.12) translateY(-1px);opacity:1}}
+    .tk-anniv-title{font-size:23px;font-weight:800;color:#ff9800;margin:0 0 3px;}
+    .tk-anniv-sub{color:#cfcfcf;font-size:13px;margin:0 0 14px;}
+    .tk-anniv-body{color:#ddd;font-size:13.5px;line-height:1.6;margin:0 0 15px;}
+    .tk-anniv-timeline{display:flex;justify-content:center;gap:8px;margin:0 0 15px;}
+    .tk-anniv-tl{flex:1;min-width:0;background:#000;border:1px solid #616161;border-radius:2px;padding:9px 6px;}
+    .tk-anniv-tl .y{color:#ff9800;font-weight:800;font-size:15px;}
+    .tk-anniv-tl .t{color:#aaa;font-size:10.5px;line-height:1.3;margin-top:3px;}
+    .tk-anniv-count{background:#000;border:1px solid #616161;border-radius:2px;padding:12px;margin:0 0 14px;}
+    .tk-anniv-count .n{font-size:27px;font-weight:800;color:#ff9800;line-height:1.1;}
+    .tk-anniv-count .l{font-size:12px;color:#aaa;margin-top:2px;}
+    .tk-anniv-btn{background:#ff9800;color:#000;border:none;border-radius:2px;padding:13px 20px;font-size:15px;font-weight:800;cursor:pointer;width:100%;box-sizing:border-box;text-transform:uppercase;letter-spacing:.5px;}
+    .tk-anniv-btn:hover{background:#ffb74d;}
+    .tk-anniv-foot{color:#8a8a8a;font-size:11.5px;margin:13px 0 0;}
+    .tk-confetti-piece{position:fixed;top:-14px;z-index:100060;pointer-events:none;}
+  `;
+  const styleEl = document.createElement("style");
+  styleEl.textContent = css;
+  document.head.appendChild(styleEl);
+
+  const CAKE = `
+    <svg class="tk-anniv-cake" viewBox="0 0 160 148" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <ellipse cx="80" cy="130" rx="62" ry="8" fill="#000"/>
+      <rect x="34" y="86" width="92" height="40" rx="3" fill="#ff7a18"/>
+      <rect x="34" y="86" width="92" height="13" rx="3" fill="#fff1dd"/>
+      <rect x="52" y="56" width="56" height="34" rx="3" fill="#ff9800"/>
+      <rect x="52" y="56" width="56" height="12" rx="3" fill="#fff1dd"/>
+      <circle cx="50" cy="112" r="2" fill="#fff1dd"/><circle cx="72" cy="117" r="2" fill="#ffce85"/>
+      <circle cx="92" cy="111" r="2" fill="#fff1dd"/><circle cx="110" cy="117" r="2" fill="#ffce85"/>
+      <circle cx="66" cy="79" r="1.8" fill="#fff1dd"/><circle cx="94" cy="81" r="1.8" fill="#ffce85"/>
+      <rect x="65" y="30" width="6" height="28" rx="1" fill="#fff1dd"/>
+      <rect x="89" y="30" width="6" height="28" rx="1" fill="#ffce85"/>
+      <ellipse class="tk-anniv-flame" cx="68" cy="24" rx="4.6" ry="8.5" fill="#ffce85"/>
+      <ellipse class="tk-anniv-flame" cx="68" cy="25" rx="2.2" ry="4.8" fill="#ff7a18"/>
+      <ellipse class="tk-anniv-flame f2" cx="92" cy="24" rx="4.6" ry="8.5" fill="#ffce85"/>
+      <ellipse class="tk-anniv-flame f2" cx="92" cy="25" rx="2.2" ry="4.8" fill="#ff7a18"/>
+    </svg>`;
+
+  function confetti(n) {
+    const colors = ["#ff9800", "#ffb454", "#ffce85", "#ffffff", "#ff7a18"];
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement("div");
+      p.className = "tk-confetti-piece";
+      const size = 6 + Math.random() * 8;
+      p.style.left = Math.random() * 100 + "vw";
+      p.style.width = size + "px";
+      p.style.height = size * 0.5 + "px";
+      p.style.background = colors[i % colors.length];
+      const dur = 2200 + Math.random() * 2200;
+      const dir = Math.random() > 0.5 ? 1 : -1;
+      p.animate(
+        [
+          { transform: "translateY(-20px) rotate(0deg)", opacity: 1 },
+          { transform: `translateY(106vh) rotate(${720 * dir}deg)`, opacity: 0.9 },
+        ],
+        { duration: dur, easing: "cubic-bezier(.3,.6,.5,1)" },
+      );
+      document.body.appendChild(p);
+      setTimeout(() => p.remove(), dur + 120);
+    }
+  }
+  function playHorn() {
+    try {
+      if (!hornAudio) hornAudio = new Audio("audio/party-horn.mp3");
+      hornAudio.currentTime = 0;
+      hornAudio.play().catch(() => {});
+    } catch (_) {}
+  }
+
+  function setCount(c) {
+    const el = document.getElementById("annivCount");
+    if (el && typeof c === "number") el.textContent = c.toLocaleString();
+  }
+  function requestCount() {
+    if (socket.connected) socket.emit("get anniversary");
+    else socket.once("connect", () => socket.emit("get anniversary"));
+  }
+  socket.on("anniversary count", (d) => {
+    if (d) setCount(d.count);
+  });
+
+  function celebrate() {
+    confetti(120);
+    playHorn();
+    if (!celebrated) {
+      celebrated = true;
+      sessionStorage.setItem("tk_anniv_celebrated", "1");
+      socket.emit("celebrate");
+      const btn = document.getElementById("annivCelebrateBtn");
+      if (btn) btn.textContent = "Celebrate again";
+    }
+  }
+
+  let overlay = null;
+  function closeModal() {
+    if (overlay) {
+      overlay.remove();
+      overlay = null;
+    }
+  }
+  function openModal() {
+    closeModal();
+    overlay = document.createElement("div");
+    overlay.className = "tk-anniv-overlay";
+    const card = document.createElement("div");
+    card.className = "tk-anniv-card";
+    card.innerHTML =
+      '<button class="ax" aria-label="Close">&times;</button>' +
+      '<div class="tk-anniv-tag">Two years</div>' +
+      CAKE +
+      '<h2 class="tk-anniv-title">Happy Birthday, Talkomatic!</h2>' +
+      '<p class="tk-anniv-sub">The open source edition turns two today.</p>' +
+      '<p class="tk-anniv-body">It started in 1973 on the PLATO system as the very first online chat. In 2024 it came back to life, open source. Two years on, people are still here typing letter by letter with strangers around the world. Thank you for keeping it alive.</p>' +
+      '<div class="tk-anniv-timeline">' +
+      '<div class="tk-anniv-tl"><div class="y">1973</div><div class="t">Born on PLATO</div></div>' +
+      '<div class="tk-anniv-tl"><div class="y">2024</div><div class="t">Reborn, open source</div></div>' +
+      '<div class="tk-anniv-tl"><div class="y">2026</div><div class="t">Turns two</div></div>' +
+      "</div>" +
+      '<div class="tk-anniv-count"><div class="n" id="annivCount">...</div><div class="l">candles lit by the community</div></div>' +
+      '<button class="tk-anniv-btn" id="annivCelebrateBtn">Light a candle</button>' +
+      '<p class="tk-anniv-foot">Come back anytime from the cake in the menu.</p>';
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    if (celebrated) {
+      const btn = card.querySelector("#annivCelebrateBtn");
+      if (btn) btn.textContent = "Celebrate again";
+    }
+    card.querySelector(".ax").addEventListener("click", closeModal);
+    card.querySelector("#annivCelebrateBtn").addEventListener("click", celebrate);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeModal();
+    });
+    document.addEventListener("keydown", function esc(e) {
+      if (e.key === "Escape") {
+        closeModal();
+        document.removeEventListener("keydown", esc);
+      }
+    });
+    requestCount();
+    confetti(70);
+  }
+
+  function buildBanner() {
+    if (localStorage.getItem(BANNER_KEY) === "1") return;
+    const panel = document.querySelector(".right-panel");
+    if (!panel || document.querySelector(".tk-anniv-banner")) return;
+    const banner = document.createElement("div");
+    banner.className = "tk-anniv-banner";
+    banner.innerHTML =
+      '<span class="cake">🎂</span>' +
+      '<div class="msg">Talkomatic is 2 today!<small>2024 to 2026. Thanks for being here.</small></div>' +
+      '<button class="celebrate" type="button">Celebrate</button>' +
+      '<button class="x" type="button" aria-label="Dismiss">&times;</button>';
+    banner.querySelector(".celebrate").addEventListener("click", openModal);
+    banner.querySelector(".x").addEventListener("click", () => {
+      localStorage.setItem(BANNER_KEY, "1");
+      banner.remove();
+    });
+    panel.insertBefore(banner, panel.firstChild);
+  }
+
+  function init() {
+    buildBanner();
+    requestCount();
+    const link = document.getElementById("anniversaryLink");
+    if (link)
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        openModal();
+      });
+    if (!sessionStorage.getItem(SEEN_KEY)) {
+      sessionStorage.setItem(SEEN_KEY, "1");
+      setTimeout(openModal, 900);
+    }
+  }
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();

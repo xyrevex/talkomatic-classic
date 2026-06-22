@@ -889,7 +889,9 @@
   // 4. STATE
   // ════════════════════════════════════════════════════════════════════
 
-  let enabled = localStorage.getItem(WC.STORAGE_KEY) !== "false";
+  // Opt-in: World Cup mode is OFF by default (original theme). Users enable it
+  // via the bottom-left "⚽ World Cup Mode" pill, which persists the choice.
+  let enabled = localStorage.getItem(WC.STORAGE_KEY) === "true";
   let ballEnabled = localStorage.getItem(WC.BALL_KEY) !== "false";
   let liveGames = null;
   let unmatchedNames = [];

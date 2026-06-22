@@ -41,6 +41,7 @@ const {
   validateObject,
 } = require("./server/security");
 const rooms = require("./server/rooms");
+const roles = require("./server/roles");
 
 // ── Global Error Handlers ───────────────────────────────────────────────────
 
@@ -265,18 +266,32 @@ io.use((socket, next) => {
       state.blockedIPs.delete(clientIp);
     }
 
-    // Dev mode: validate devKey from socket auth before bot/browser checks
+    // Dev mode: validate devKey by hash against the configured dev keys
+    // (.env DEV_KEY_HASH supports multiple labeled keys). Owner-only.
     const devKey = socket.handshake.auth.devKey;
-    if (devKey && CONFIG.DEV.KEY_HASH) {
-      const hash = crypto
-        .createHash("sha256")
-        .update(String(devKey))
-        .digest("hex");
+    const devMatch = devKey ? roles.getDevKey(devKey) : null;
+    if (devMatch) {
+      socket.isDev = true;
+      socket.staffLabel = devMatch.label;
+      socket.devKeyHash = devMatch.hash;
+      socket.isHidden = !!socket.handshake?.session?.isDevHidden;
+      console.log(
+        `[DEV] Dev mode activated (${devMatch.label}) for IP:${clientIp}`,
+      );
+    }
 
-      if (hash === CONFIG.DEV.KEY_HASH) {
-        socket.isDev = true;
+    // Mod mode: validate modKey by hash against mod-keys.json. Dev outranks mod,
+    // so only check when the connection is not already a dev.
+    if (!socket.isDev) {
+      const modKey = socket.handshake.auth.modKey;
+      const mk = modKey ? roles.getModKeyByPlain(modKey) : null;
+      if (mk) {
+        socket.isMod = true;
+        socket.modKeyHash = mk.hash;
+        socket.staffLabel = mk.label;
+        // Mods can hide their badge with the same persisted toggle as devs.
         socket.isHidden = !!socket.handshake?.session?.isDevHidden;
-        console.log(`[DEV] Dev mode activated for IP:${clientIp}`);
+        console.log(`[MOD] Mod mode activated (${mk.label}) for IP:${clientIp}`);
       }
     }
 
