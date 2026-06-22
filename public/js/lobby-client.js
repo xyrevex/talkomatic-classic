@@ -1671,9 +1671,9 @@ socket.on("maintenance status", (data) => {
     .tk-anniv-card .ax:hover{background:#ff9800;color:#000;}
     .tk-anniv-tag{display:inline-block;background:#ff9800;color:#000;font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:3px 12px;border-radius:2px;margin-bottom:10px;}
     .tk-anniv-cake{width:156px;height:148px;display:block;margin:2px auto 8px;}
-    .tk-anniv-flame{transform-origin:center bottom;animation:tkFlick .85s ease-in-out infinite alternate;}
-    .tk-anniv-flame.f2{animation-delay:.42s;}
-    @keyframes tkFlick{from{transform:scaleY(.82) translateY(1px);opacity:.85}to{transform:scaleY(1.12) translateY(-1px);opacity:1}}
+    .tk-anniv-flame{transform-box:fill-box;transform-origin:center bottom;animation:tkFlame 2.2s ease-in-out infinite;}
+    .tk-anniv-flame.f2{animation-duration:2.6s;animation-delay:.5s;}
+    @keyframes tkFlame{0%,100%{transform:rotate(-2deg) scaleX(1) scaleY(1);opacity:.92}25%{transform:rotate(1.5deg) scaleX(.97) scaleY(1.03);opacity:1}50%{transform:rotate(2.5deg) scaleX(1) scaleY(.99);opacity:.96}75%{transform:rotate(-1deg) scaleX(1.02) scaleY(1.02);opacity:1}}
     .tk-anniv-title{font-size:23px;font-weight:800;color:#ff9800;margin:0 0 3px;}
     .tk-anniv-sub{color:#cfcfcf;font-size:13px;margin:0 0 14px;}
     .tk-anniv-body{color:#ddd;font-size:13.5px;line-height:1.6;margin:0 0 15px;}
