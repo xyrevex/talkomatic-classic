@@ -1853,11 +1853,43 @@ class Talkoboard {
   // user's drawing color). Keeps names distinguishable in the log.
   nameColor(userId) {
     const known = this.peerColors.get(userId);
-    if (known) return known;
+    if (known) return this.readableColor(known);
     let h = 0;
     const s = String(userId || "x");
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
     return `hsl(${h % 360}, 70%, 72%)`;
+  }
+
+  // The chat panel is dark and the avatar's initial is dark, so a dark drawing
+  // color (black, navy, dark red) would be invisible as a name and as an avatar.
+  // Lift only very dark colors to a readable lightness while keeping their hue;
+  // the color panel swatches still use the true color, so this is chat-only.
+  readableColor(color) {
+    const hex = this.normalizeHex(color);
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255,
+      g = (n >> 8) & 255,
+      b = n & 255;
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    if (lum >= 0.5) return color; // already legible on the dark chat
+    const rn = r / 255,
+      gn = g / 255,
+      bn = b / 255;
+    const max = Math.max(rn, gn, bn),
+      min = Math.min(rn, gn, bn);
+    const l = (max + min) / 2;
+    const d = max - min;
+    let h = 0,
+      sat = 0;
+    if (d !== 0) {
+      sat = d / (1 - Math.abs(2 * l - 1));
+      if (max === rn) h = ((((gn - bn) / d) % 6) + 6) % 6;
+      else if (max === gn) h = (bn - rn) / d + 2;
+      else h = (rn - gn) / d + 4;
+      h *= 60;
+    }
+    const nl = Math.max(l, 0.62); // lightness floor so it reads on #202020
+    return `hsl(${Math.round(h)}, ${Math.round(sat * 100)}%, ${Math.round(nl * 100)}%)`;
   }
 
   addChatMessage(data) {
