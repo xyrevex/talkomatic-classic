@@ -537,6 +537,17 @@ socket.on("disconnect", (reason) => {
 });
 
 socket.on("connect_error", (error) => {
+  // IP block: the server attaches ban details. Show a clear ban screen with a
+  // live countdown (or a permanent notice) instead of retrying forever.
+  if (error?.data?.banned) {
+    try {
+      socket.io.opts.reconnection = false;
+      socket.disconnect();
+    } catch (_) {}
+    showBanScreen(error.data);
+    return;
+  }
+
   console.error("Connection error:", error);
   updateConnectionStatus();
 
@@ -566,6 +577,165 @@ socket.on("reconnect", (attemptNumber) => {
   updateConnectionStatus();
   checkSignInStatus();
 });
+
+// One active tab per browser session: if another tab takes over this identity,
+// pause this tab instead of letting two tabs fight over one identity.
+let tabSuperseded = false;
+function showTabSupersededOverlay() {
+  if (tabSuperseded) return;
+  tabSuperseded = true;
+  try {
+    socket.io.opts.reconnection = false;
+    socket.disconnect();
+  } catch (_) {}
+  if (!document.getElementById("supersededStyles")) {
+    const st = document.createElement("style");
+    st.id = "supersededStyles";
+    st.textContent = `
+      #supersededOverlay{position:fixed;inset:0;z-index:1000002;background:#0a0a0a;
+        display:flex;align-items:center;justify-content:center;padding:20px;font-family:Arial,sans-serif;}
+      #supersededOverlay .ss-card{max-width:460px;width:100%;background:#181818;border:1px solid #616161;
+        border-radius:10px;padding:36px 30px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.6);}
+      #supersededOverlay .ss-icon{font-size:52px;color:#ff9800;margin-bottom:16px;}
+      #supersededOverlay h1{color:#ff9800;font-size:24px;margin:0 0 10px;}
+      #supersededOverlay p{color:#dddddd;font-size:15px;line-height:1.6;margin:0 0 22px;}
+      #supersededOverlay button{background:#ff9800;color:#000;border:none;border-radius:6px;
+        padding:12px 26px;font-size:15px;font-weight:bold;cursor:pointer;font-family:inherit;}
+      #supersededOverlay button:hover{background:#ffb74d;}
+    `;
+    document.head.appendChild(st);
+  }
+  const ov = document.createElement("div");
+  ov.id = "supersededOverlay";
+  ov.innerHTML =
+    '<div class="ss-card">' +
+    '<div class="ss-icon"><i class="fas fa-window-restore"></i></div>' +
+    "<h1>This tab is paused</h1>" +
+    "<p>Talkomatic is now open in another tab. Only one tab can be active at a time, so this one was paused.</p>" +
+    '<button id="ssUseHere">Use this tab</button>' +
+    "</div>";
+  document.body.appendChild(ov);
+  const btn = document.getElementById("ssUseHere");
+  if (btn) btn.addEventListener("click", () => window.location.reload());
+}
+socket.on("session superseded", showTabSupersededOverlay);
+
+// ── Ban screen: big, clear, with a live countdown or a permanent notice ───────
+let banScreenShown = false;
+function showBanScreen(info) {
+  if (banScreenShown) return;
+  banScreenShown = true;
+  const DISCORD = "https://discord.gg/N7tJznESrE";
+
+  if (!document.getElementById("banScreenStyles")) {
+    const style = document.createElement("style");
+    style.id = "banScreenStyles";
+    style.textContent = `
+      #banScreen{position:fixed;inset:0;z-index:1000001;background:#0a0a0a;
+        display:flex;align-items:center;justify-content:center;padding:20px;
+        font-family:Arial,sans-serif;}
+      #banScreen .ban-card{max-width:540px;width:100%;background:#181818;
+        border:1px solid #616161;border-radius:10px;padding:40px 32px;text-align:center;
+        box-shadow:0 12px 40px rgba(0,0,0,.6);}
+      #banScreen .ban-icon{font-size:60px;color:#ff5252;margin-bottom:18px;}
+      #banScreen h1{color:#ff9800;font-size:30px;margin:0 0 10px;font-weight:bold;}
+      #banScreen .ban-sub{color:#e0e0e0;font-size:16px;line-height:1.6;margin:0 0 22px;}
+      #banScreen .ban-timer{background:#000;border:1px solid #616161;border-radius:8px;
+        padding:18px;margin:0 0 22px;}
+      #banScreen .ban-timer-label{color:#9a9a9a;font-size:12px;text-transform:uppercase;
+        letter-spacing:1px;margin-bottom:8px;}
+      #banScreen .ban-timer-value{color:#fff;font-size:34px;font-weight:bold;
+        font-variant-numeric:tabular-nums;font-family:'Courier New',monospace;}
+      #banScreen .ban-reason{background:#000;border:1px solid #616161;
+        border-left:4px solid #ff9800;border-radius:8px;padding:14px 16px;
+        margin:0 0 22px;text-align:left;}
+      #banScreen .ban-reason-label{color:#ff9800;font-size:12px;text-transform:uppercase;
+        letter-spacing:1px;margin-bottom:6px;font-weight:bold;}
+      #banScreen .ban-reason-text{color:#e0e0e0;font-size:15px;line-height:1.5;
+        white-space:pre-wrap;word-break:break-word;}
+      #banScreen .ban-perm{display:inline-block;background:#ff5252;color:#000;
+        font-weight:bold;font-size:15px;padding:10px 18px;border-radius:6px;
+        text-transform:uppercase;letter-spacing:1px;margin:0 0 22px;}
+      #banScreen .ban-discord{display:inline-flex;align-items:center;gap:10px;
+        background:#5865f2;color:#fff;text-decoration:none;font-size:16px;font-weight:bold;
+        padding:14px 26px;border-radius:8px;transition:background .2s;}
+      #banScreen .ban-discord:hover{background:#4752c4;}
+      #banScreen .ban-note{color:#8a8a8a;font-size:13px;margin-top:18px;line-height:1.5;}
+    `;
+    document.head.appendChild(style);
+  }
+
+  const permanent = !!info.permanent;
+  const timerHtml = permanent
+    ? '<div class="ban-perm"><i class="fas fa-ban"></i> Permanent ban</div>'
+    : '<div class="ban-timer"><div class="ban-timer-label">Time remaining</div>' +
+      '<div class="ban-timer-value" id="banCountdown">--:--:--</div></div>';
+
+  const overlay = document.createElement("div");
+  overlay.id = "banScreen";
+  overlay.innerHTML =
+    '<div class="ban-card">' +
+    '<div class="ban-icon"><i class="fas fa-gavel"></i></div>' +
+    "<h1>Access Blocked</h1>" +
+    '<p class="ban-sub">' +
+    (permanent
+      ? "Your access to Talkomatic has been permanently blocked by a moderator."
+      : "Your access to Talkomatic has been temporarily blocked by a moderator.") +
+    "</p>" +
+    '<div class="ban-reason" id="banReason" style="display:none">' +
+    '<div class="ban-reason-label">' +
+    '<i class="fas fa-comment-dots"></i> Reason from staff</div>' +
+    '<div class="ban-reason-text" id="banReasonText"></div>' +
+    "</div>" +
+    timerHtml +
+    '<a class="ban-discord" href="' +
+    DISCORD +
+    '" target="_blank" rel="noopener noreferrer">' +
+    '<i class="fab fa-discord"></i> Appeal on our Discord</a>' +
+    '<p class="ban-note">If you believe this was a mistake, join our Discord and let a staff member know. ' +
+    (permanent ? "" : "This page refreshes automatically once your ban ends.") +
+    "</p>" +
+    "</div>";
+  document.body.appendChild(overlay);
+
+  // Reason is staff-entered free text: render via textContent, never as HTML.
+  if (info.reason) {
+    const rc = document.getElementById("banReason");
+    const rt = document.getElementById("banReasonText");
+    if (rc && rt) {
+      rt.textContent = info.reason;
+      rc.style.display = "block";
+    }
+  }
+
+  if (!permanent && info.expiry) {
+    const tick = () => {
+      const el = document.getElementById("banCountdown");
+      if (!el) return;
+      const remaining = info.expiry - Date.now();
+      if (remaining <= 0) {
+        el.textContent = "00:00:00";
+        window.location.reload();
+        return;
+      }
+      el.textContent = formatBanRemaining(remaining);
+    };
+    tick();
+    setInterval(tick, 1000);
+  }
+}
+
+function formatBanRemaining(ms) {
+  let s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  s -= d * 86400;
+  const h = Math.floor(s / 3600);
+  s -= h * 3600;
+  const m = Math.floor(s / 60);
+  s -= m * 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return (d > 0 ? d + "d " : "") + pad(h) + ":" + pad(m) + ":" + pad(s);
+}
 
 socket.on("dev lobby context", (codes) => {
   devLobbyCodes = codes || {};
@@ -759,6 +929,7 @@ socket.on("signin status", (data) => {
   currentUserIsDev = !!data.isDev;
   currentUserIsMod = !!data.isMod;
   if (currentUserIsDev) ensureDevPanelButton();
+  updateStaffLink();
   if (data.isSignedIn) {
     currentUsername = data.username;
     currentLocation = data.location;
@@ -924,31 +1095,36 @@ function createRoomElement(room) {
   roomElement.appendChild(enterButton);
   roomElement.appendChild(roomTop);
 
-  // Dev-only per-room controls: spectate (read-only) and spotlight toggle
-  if (currentUserIsDev) {
+  // Per-room staff controls: spectate is dev + mod; spotlight stays dev-only.
+  if (currentUserIsDev || currentUserIsMod) {
     const devRow = document.createElement("div");
     devRow.className = "lobby-dev-controls";
 
     const spectateBtn = document.createElement("button");
     spectateBtn.type = "button";
     spectateBtn.className = "lobby-dev-btn";
-    spectateBtn.textContent = "👁 Spectate";
+    spectateBtn.innerHTML = '<i class="fas fa-eye"></i> Spectate';
     spectateBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       window.location.href = `/room.html?roomId=${room.id}&spectate=1`;
     });
-
-    const spotBtn = document.createElement("button");
-    spotBtn.type = "button";
-    spotBtn.className = "lobby-dev-btn";
-    spotBtn.textContent = room.spotlight ? "★ Unspotlight" : "★ Spotlight";
-    spotBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      socket.emit("staff spotlight", { roomId: room.id, on: !room.spotlight });
-    });
-
     devRow.appendChild(spectateBtn);
-    devRow.appendChild(spotBtn);
+
+    if (currentUserIsDev) {
+      const spotBtn = document.createElement("button");
+      spotBtn.type = "button";
+      spotBtn.className = "lobby-dev-btn";
+      spotBtn.textContent = room.spotlight ? "★ Unspotlight" : "★ Spotlight";
+      spotBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        socket.emit("staff spotlight", {
+          roomId: room.id,
+          on: !room.spotlight,
+        });
+      });
+      devRow.appendChild(spotBtn);
+    }
+
     roomElement.appendChild(devRow);
   }
 
@@ -1041,13 +1217,24 @@ function initLobby() {
 
   statsModal = new StatsModal();
 
-  document
-    .getElementById("statsForNerdsButton")
-    .addEventListener("click", (e) => {
+  // Guard the optional stats button: it was removed from the lobby menu, so
+  // getElementById returns null. Without this guard the throw aborts the rest
+  // of initLobby — including the Update Notes binding below.
+  const statsBtn = document.getElementById("statsForNerdsButton");
+  if (statsBtn)
+    statsBtn.addEventListener("click", (e) => {
       e.preventDefault();
       if (statsModal) {
         statsModal.open();
       }
+    });
+
+  // Update Notes: re-open the update popup (popup.js) on demand.
+  const updateNotesBtn = document.getElementById("updateNotesButton");
+  if (updateNotesBtn)
+    updateNotesBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (window.TalkomaticPopup) window.TalkomaticPopup.forceShowPopup();
     });
 
   setTimeout(() => {
@@ -1129,7 +1316,7 @@ function ensureDevPanelButton() {
   const btn = document.createElement("button");
   btn.id = "devPanelButton";
   btn.type = "button";
-  btn.textContent = "🛠 Dev Panel";
+  btn.innerHTML = '<i class="fas fa-screwdriver-wrench"></i> Dev Panel';
   btn.title = "Dev tools";
   btn.addEventListener("click", openDevPanel);
   document.body.appendChild(btn);
@@ -1137,9 +1324,9 @@ function ensureDevPanelButton() {
 
 function openDevPanel() {
   if (!window.StaffUI) return;
-  StaffUI.menu({
+  StaffUI.panel({
     title: "Dev panel",
-    icon: "🛠️",
+    icon: '<i class="fas fa-screwdriver-wrench"></i>',
     subtitle: "Global staff tools",
     wide: true,
     onHelp: () => StaffUI.help("dev"),
@@ -1148,13 +1335,13 @@ function openDevPanel() {
         title: "Moderators",
         items: [
           {
-            icon: "➕",
+            icon: '<i class="fas fa-user-plus"></i>',
             label: "Grant mod key…",
             desc: "Create a key for a new mod (shown once)",
             onClick: async () => {
               const label = await StaffUI.prompt({
                 title: "Grant mod key",
-                icon: "➕",
+                icon: '<i class="fas fa-user-plus"></i>',
                 fields: [
                   {
                     name: "value",
@@ -1170,7 +1357,7 @@ function openDevPanel() {
             },
           },
           {
-            icon: "🗂️",
+            icon: '<i class="fas fa-list"></i>',
             label: "Manage / revoke mod keys…",
             desc: "List current mods and revoke instantly",
             onClick: () => {
@@ -1184,13 +1371,13 @@ function openDevPanel() {
         title: "Broadcast",
         items: [
           {
-            icon: "📰",
+            icon: '<i class="fas fa-newspaper"></i>',
             label: "Lobby ticker…",
             desc: "Editable banner at the top of the lobby",
             onClick: async () => {
               const msg = await StaffUI.prompt({
                 title: "Lobby ticker",
-                icon: "📰",
+                icon: '<i class="fas fa-newspaper"></i>',
                 fields: [
                   {
                     name: "value",
@@ -1205,13 +1392,13 @@ function openDevPanel() {
             },
           },
           {
-            icon: "📢",
+            icon: '<i class="fas fa-tower-broadcast"></i>',
             label: "Megaphone everywhere…",
             desc: "Announcement to all rooms + lobby",
             onClick: async () => {
               const msg = await StaffUI.prompt({
                 title: "Megaphone (everywhere)",
-                icon: "📢",
+                icon: '<i class="fas fa-tower-broadcast"></i>',
                 fields: [
                   {
                     name: "value",
@@ -1233,19 +1420,19 @@ function openDevPanel() {
         title: "Server",
         items: [
           {
-            icon: "🚩",
+            icon: '<i class="fas fa-flag"></i>',
             label: "Feature flags…",
             desc: "Word filter / room creation / limit",
             onClick: () => socket.emit("dev get flags"),
           },
           {
-            icon: "🛠️",
+            icon: '<i class="fas fa-screwdriver-wrench"></i>',
             label: "Maintenance mode (toggle)",
             desc: "Pause new rooms + joins",
             onClick: () => socket.emit("dev set maintenance", {}),
           },
           {
-            icon: "🧯",
+            icon: '<i class="fas fa-fire-extinguisher"></i>',
             label: "Clear bot blacklist",
             desc: "Lift all bot-blacklist entries",
             onClick: async () => {
@@ -1259,7 +1446,7 @@ function openDevPanel() {
             },
           },
           {
-            icon: "🔓",
+            icon: '<i class="fas fa-unlock"></i>',
             label: "Blocked IPs…",
             desc: "See who is blocked and unblock them",
             onClick: () => {
@@ -1268,14 +1455,14 @@ function openDevPanel() {
             },
           },
           {
-            icon: "💣",
+            icon: '<i class="fas fa-bomb"></i>',
             label: "NUKE all rooms",
             danger: true,
             desc: "Emergency clear of every room",
             onClick: async () => {
               const r = await StaffUI.prompt({
                 title: "Nuke all rooms",
-                icon: "💣",
+                icon: '<i class="fas fa-bomb"></i>',
                 danger: true,
                 message:
                   "Clears EVERY room and removes ALL users. Type NUKE to confirm.",
@@ -1301,8 +1488,8 @@ function openDevPanel() {
         title: "Accountability",
         items: [
           {
-            icon: "📋",
-            label: "Open Mod Log",
+            icon: '<i class="fas fa-clipboard"></i>',
+            label: "Open Mod Dashboard",
             desc: "Every staff action + identity change",
             onClick: () => window.open("/mod.html", "_blank"),
           },
@@ -1344,7 +1531,7 @@ socket.on("dev mod granted", (data) => {
   wrap.appendChild(code);
   StaffUI.modal({
     title: "Mod key granted",
-    icon: "🔑",
+    icon: '<i class="fas fa-key"></i>',
     wide: true,
     body: wrap,
     actions: [
@@ -1376,7 +1563,7 @@ socket.on("dev mod keys", (keys) => {
   const list = Array.isArray(keys) ? keys : [];
   const items = list.length
     ? list.map((k) => ({
-        icon: "🛡️",
+        icon: '<i class="fas fa-user-shield"></i>',
         label: k.label,
         desc: "key " + k.hash.slice(0, 12) + "…",
         danger: true,
@@ -1402,7 +1589,7 @@ socket.on("dev mod keys", (keys) => {
       ];
   StaffUI.menu({
     title: "Mod keys",
-    icon: "🗂️",
+    icon: '<i class="fas fa-list"></i>',
     subtitle: `${list.length} active`,
     groups: [{ items }],
     onHelp: () => StaffUI.help("dev"),
@@ -1424,10 +1611,13 @@ socket.on("dev blocks", (list) => {
   };
   const items = blocks.length
     ? blocks.map((b) => ({
-        icon: "🚫",
+        icon: '<i class="fas fa-ban"></i>',
         label: (b.label ? b.label + "  " : "") + b.ip,
         desc:
-          fmtExpiry(b) + (b.by ? "  •  blocked by " + b.by : "") + "  •  tap to unblock",
+          fmtExpiry(b) +
+          (b.by ? "  •  blocked by " + b.by : "") +
+          (b.reason ? "  •  " + b.reason : "") +
+          "  •  tap to unblock",
         danger: true,
         keepOpen: true,
         onClick: async () => {
@@ -1435,18 +1625,26 @@ socket.on("dev blocks", (list) => {
             await StaffUI.confirm({
               title: "Unblock",
               message:
-                "Unblock " + (b.label ? b.label + " (" + b.ip + ")" : b.ip) + "?",
+                "Unblock " +
+                (b.label ? b.label + " (" + b.ip + ")" : b.ip) +
+                "?",
               confirmText: "Unblock",
             })
           )
             socket.emit("dev unblock ip", { ip: b.ip });
         },
       }))
-    : [{ icon: "·", label: "No blocked IPs", desc: "Nobody is currently blocked" }];
+    : [
+        {
+          icon: "·",
+          label: "No blocked IPs",
+          desc: "Nobody is currently blocked",
+        },
+      ];
   if (blocksCtrl) blocksCtrl.close();
   blocksCtrl = StaffUI.menu({
     title: "Blocked IPs",
-    icon: "🔓",
+    icon: '<i class="fas fa-unlock"></i>',
     subtitle: blocks.length + " active",
     groups: [{ items }],
   });
@@ -1456,20 +1654,24 @@ socket.on("dev flags", (flags) => {
   if (!flags || !window.StaffUI) return;
   StaffUI.menu({
     title: "Feature flags",
-    icon: "🚩",
+    icon: '<i class="fas fa-flag"></i>',
     subtitle: "Live server configuration",
     groups: [
       {
         items: [
           {
-            icon: flags.wordFilter ? "✅" : "⛔",
+            icon: flags.wordFilter
+              ? '<i class="fas fa-circle-check"></i>'
+              : '<i class="fas fa-ban"></i>',
             label: `Word filter (global): ${flags.wordFilter ? "ON" : "OFF"}`,
             desc: "Toggle the global word filter",
             onClick: () =>
               socket.emit("dev set flags", { wordFilter: !flags.wordFilter }),
           },
           {
-            icon: flags.roomCreation ? "✅" : "⛔",
+            icon: flags.roomCreation
+              ? '<i class="fas fa-circle-check"></i>'
+              : '<i class="fas fa-ban"></i>',
             label: `Room creation: ${flags.roomCreation ? "ON" : "OFF"}`,
             desc: "Allow users to create rooms",
             onClick: () =>
@@ -1478,7 +1680,7 @@ socket.on("dev flags", (flags) => {
               }),
           },
           {
-            icon: "🔢",
+            icon: '<i class="fas fa-hashtag"></i>',
             label: `Room limit: ${flags.baseMaxRooms}`,
             desc: "How many rooms can exist at once",
             onClick: async () => {
@@ -1500,13 +1702,13 @@ socket.on("dev flags", (flags) => {
             },
           },
           {
-            icon: "👥",
+            icon: '<i class="fas fa-users"></i>',
             label: `Max room size: ${flags.maxRoomCapacity} people`,
             desc: "How many users fit in one room (2 to 50)",
             onClick: async () => {
               const v = await StaffUI.prompt({
                 title: "Max room size",
-                icon: "👥",
+                icon: '<i class="fas fa-users"></i>',
                 message: "How many people can be in a single room (2 to 50)?",
                 fields: [
                   {
@@ -1524,7 +1726,9 @@ socket.on("dev flags", (flags) => {
             },
           },
           {
-            icon: flags.maintenance ? "🛠️" : "🟢",
+            icon: flags.maintenance
+              ? '<i class="fas fa-screwdriver-wrench"></i>'
+              : '<i class="fas fa-circle-check"></i>',
             label: `Maintenance: ${flags.maintenance ? "ON" : "OFF"}`,
             desc: "Toggle maintenance mode",
             onClick: () => socket.emit("dev set maintenance", {}),
@@ -1556,7 +1760,7 @@ async function openStaffKeyEntry() {
   if (!window.StaffUI) return;
   const key = await StaffUI.prompt({
     title: "Staff access",
-    icon: "🔑",
+    icon: '<i class="fas fa-key"></i>',
     subtitle: "Enter your dev or mod key",
     message:
       "All keys are verified, logged, and monitored on our servers. Sharing your key with anyone will result in a permanent ban from Talkomatic.",
@@ -1601,7 +1805,7 @@ socket.on("you are now mod", (d) => {
   if (!d || !d.key) return;
   localStorage.setItem("talkomatic_modKey", d.key);
   lobbyNotify("You've been promoted to Moderator! Reloading…", "success", {
-    title: "🛡️ You are now a mod",
+    title: "You are now a mod",
     timeout: 4000,
   });
   setTimeout(() => window.location.reload(), 1600);
@@ -1612,8 +1816,25 @@ const staffLoginLink = document.getElementById("staffLoginLink");
 if (staffLoginLink)
   staffLoginLink.addEventListener("click", (e) => {
     e.preventDefault();
-    openStaffKeyEntry();
+    // Already signed in as staff: jump straight to the dashboard (mod.html is
+    // exempt from the single-tab guard). Otherwise open the key-entry box.
+    if (currentUserIsDev || currentUserIsMod)
+      window.open("/mod.html", "_blank");
+    else openStaffKeyEntry();
   });
+
+// Reflect the server-proven staff role in the menu link: "Staff Access" becomes
+// "Mod Dashboard" for mods and "Dev Dashboard" for devs once a key validates.
+function updateStaffLink() {
+  const link = document.getElementById("staffLoginLink");
+  if (!link) return;
+  if (currentUserIsDev)
+    link.innerHTML = '<i class="fas fa-gauge-high"></i> Dev Dashboard';
+  else if (currentUserIsMod)
+    link.innerHTML = '<i class="fas fa-gauge-high"></i> Mod Dashboard';
+  else link.innerHTML = '<i class="fas fa-key"></i> Staff Access';
+}
+updateStaffLink();
 if (window.location.hash === "#staff") setTimeout(openStaffKeyEntry, 700);
 window.addEventListener("hashchange", () => {
   if (window.location.hash === "#staff") openStaffKeyEntry();
@@ -1631,7 +1852,7 @@ function setLobbyTicker(message) {
     bar.id = "lobbyTickerBar";
     document.body.appendChild(bar);
   }
-  bar.textContent = "📣 " + message;
+  bar.textContent = message;
 }
 socket.on("lobby ticker", (data) =>
   setLobbyTicker((data && data.message) || ""),
@@ -1640,7 +1861,7 @@ socket.on("lobby ticker", (data) =>
 socket.on("megaphone", (data) => {
   if (data && data.message)
     lobbyNotify(data.message, "warning", {
-      title: "📢 Announcement",
+      title: "Announcement",
       fullWidth: true,
       timeout: 14000,
     });
@@ -1653,7 +1874,7 @@ socket.on("maintenance status", (data) => {
       bar = document.createElement("div");
       bar.id = "lobbyMaintenanceBar";
       bar.textContent =
-        "🛠 Maintenance mode: creating rooms and joining are paused.";
+        "Maintenance mode: creating rooms and joining are paused.";
       document.body.appendChild(bar);
     }
   } else if (bar) {
@@ -1670,8 +1891,8 @@ socket.on("maintenance status", (data) => {
     .lobby-dev-controls{display:flex;gap:6px;margin-top:6px;}
     .lobby-dev-btn{flex:1;background:#15161a;color:#ff9800;border:1px solid #2c2f37;border-radius:6px;padding:5px 6px;font-size:11px;cursor:pointer;font-weight:600;}
     .lobby-dev-btn:hover{border-color:#ff9800;background:#1d1a12;}
-    #devPanelButton{position:fixed;bottom:16px;right:16px;z-index:99990;background:#1a1206;color:#ff9800;border:1px solid #ff9800;border-radius:22px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.5);}
-    #devPanelButton:hover{background:#241a08;}
+    #devPanelButton{position:fixed;bottom:16px;right:16px;z-index:99990;background: #030303;color: #ffffff;border:1px solid #ff9800;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.5);}
+    #devPanelButton:hover{background: #252525;}
     #lobbyTickerBar{position:fixed;top:0;left:0;right:0;z-index:99980;background:#ff9800;color:#1a1206;text-align:center;font-size:13px;font-weight:700;padding:7px 16px;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;}
     #lobbyMaintenanceBar{position:fixed;bottom:0;left:0;right:0;z-index:99980;background:#5c2d91;color:#fff;text-align:center;font-size:13px;font-weight:700;padding:7px 16px;box-sizing:border-box;}
   `;
@@ -1679,8 +1900,6 @@ socket.on("maintenance status", (data) => {
   style.textContent = css;
   document.head.appendChild(style);
 })();
-
-
 
 // ============================================================================
 // 15. 2ND ANNIVERSARY (festive, themed to match Talkomatic). A birthday banner
@@ -1695,7 +1914,7 @@ socket.on("maintenance status", (data) => {
   let hornAudio = null;
 
   const css = `
-    .tk-anniv-banner{display:flex;align-items:center;gap:10px;background:#1a1a1a;border:1px solid #ff9800;border-left:4px solid #ff9800;border-radius:2px;padding:10px 12px;margin:0 0 14px;color:#fff;font-size:13.5px;}
+    .tk-anniv-banner{display:flex;align-items:center;gap:10px;background:#1a1a1a;border:1px solid #000000;border-radius:2px;padding:10px 12px;color:#fff;font-size:13.5px;}
     .tk-anniv-banner .cake{font-size:22px;line-height:1;}
     .tk-anniv-banner .msg{flex:1;line-height:1.25;min-width:0;font-weight:700;}
     .tk-anniv-banner .msg small{display:block;font-weight:500;color:#bbb;font-size:11px;}
@@ -1766,7 +1985,10 @@ socket.on("maintenance status", (data) => {
       p.animate(
         [
           { transform: "translateY(-20px) rotate(0deg)", opacity: 1 },
-          { transform: `translateY(106vh) rotate(${720 * dir}deg)`, opacity: 0.9 },
+          {
+            transform: `translateY(106vh) rotate(${720 * dir}deg)`,
+            opacity: 0.9,
+          },
         ],
         { duration: dur, easing: "cubic-bezier(.3,.6,.5,1)" },
       );
@@ -1842,7 +2064,9 @@ socket.on("maintenance status", (data) => {
       if (btn) btn.textContent = "Celebrate again";
     }
     card.querySelector(".ax").addEventListener("click", closeModal);
-    card.querySelector("#annivCelebrateBtn").addEventListener("click", celebrate);
+    card
+      .querySelector("#annivCelebrateBtn")
+      .addEventListener("click", celebrate);
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) closeModal();
     });

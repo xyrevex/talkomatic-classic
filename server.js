@@ -262,7 +262,18 @@ io.use((socket, next) => {
 
     if (state.blockedIPs.has(clientIp)) {
       const block = state.blockedIPs.get(clientIp);
-      if (Date.now() < block.expiry) return next(new Error("IP blocked"));
+      if (Date.now() < block.expiry) {
+        const err = new Error("IP blocked");
+        // Surfaced to the client's connect_error handler so the lobby can show
+        // a clear ban screen with a live countdown (or "permanent").
+        err.data = {
+          banned: true,
+          permanent: block.expiry >= Number.MAX_SAFE_INTEGER,
+          expiry: block.expiry,
+          reason: block.reason || null,
+        };
+        return next(err);
+      }
       state.blockedIPs.delete(clientIp);
     }
 
@@ -275,6 +286,13 @@ io.use((socket, next) => {
       socket.staffLabel = devMatch.label;
       socket.devKeyHash = devMatch.hash;
       socket.isHidden = !!socket.handshake?.session?.isDevHidden;
+      // Track which IPs this key connects from; flag a brand-new one.
+      socket.keyNewIp = roles.recordKeyUse(
+        devMatch.hash,
+        devMatch.label,
+        "dev",
+        clientIp,
+      ).newIp;
       console.log(
         `[DEV] Dev mode activated (${devMatch.label}) for IP:${clientIp}`,
       );
@@ -291,6 +309,12 @@ io.use((socket, next) => {
         socket.staffLabel = mk.label;
         // Mods can hide their badge with the same persisted toggle as devs.
         socket.isHidden = !!socket.handshake?.session?.isDevHidden;
+        socket.keyNewIp = roles.recordKeyUse(
+          mk.hash,
+          mk.label,
+          "mod",
+          clientIp,
+        ).newIp;
         console.log(`[MOD] Mod mode activated (${mk.label}) for IP:${clientIp}`);
       }
     }

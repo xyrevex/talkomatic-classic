@@ -14,9 +14,16 @@ const { CONFIG } = require("./state");
 
 const MOD_KEYS_PATH = path.join(__dirname, "..", "mod-keys.json");
 const MODLOG_PATH = path.join(__dirname, "..", "modlog.txt");
+const KEY_ACTIVITY_PATH = path.join(__dirname, "..", "key-activity.json");
 
 // In-memory mirror of mod-keys.json: [{ hash, label }]
 let modKeys = [];
+
+// Which IPs each staff key has ever connected from, persisted so a leaked key
+// being used from a brand-new IP can be flagged even across restarts.
+// hash -> { label, role, ips: { ip: { first, last, count } } }
+let keyActivity = {};
+let keyActivitySaveTimer = null;
 
 function hashKey(key) {
   return crypto
@@ -146,8 +153,69 @@ function modLog({ label, action, target, room } = {}) {
     .catch((e) => console.error("modlog append failed:", e));
 }
 
+// ── Key-use tracking (leak detection) ───────────────────────────────────────
+function loadKeyActivity() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(KEY_ACTIVITY_PATH, "utf8"));
+    keyActivity = obj && typeof obj === "object" ? obj : {};
+  } catch (err) {
+    if (err.code !== "ENOENT")
+      console.error("Error loading key-activity.json:", err);
+    keyActivity = {};
+  }
+}
+
+function saveKeyActivitySoon() {
+  if (keyActivitySaveTimer) return;
+  keyActivitySaveTimer = setTimeout(async () => {
+    keyActivitySaveTimer = null;
+    try {
+      const tmp = KEY_ACTIVITY_PATH + ".tmp";
+      await fsp.writeFile(tmp, JSON.stringify(keyActivity), "utf8");
+      await fsp.rename(tmp, KEY_ACTIVITY_PATH);
+    } catch (e) {
+      console.error("key-activity save failed:", e);
+    }
+  }, 2000);
+}
+
+// Records that a key (by hash) was just used from `ip`. Returns
+// { newIp } so the caller can raise an alert the first time a key is seen
+// from an address it has never connected from before.
+function recordKeyUse(hash, label, role, ip) {
+  if (!hash || !ip) return { newIp: false };
+  let rec = keyActivity[hash];
+  if (!rec) rec = keyActivity[hash] = { label: label || role, role, ips: {} };
+  rec.label = label || rec.label;
+  rec.role = role || rec.role;
+  const now = Date.now();
+  const seen = rec.ips[ip];
+  const newIp = !seen;
+  if (seen) {
+    seen.last = now;
+    seen.count = (seen.count || 0) + 1;
+  } else {
+    rec.ips[ip] = { first: now, last: now, count: 1 };
+  }
+  saveKeyActivitySoon();
+  return { newIp };
+}
+
+// Serializable snapshot of every key's known IPs, newest IP first.
+function getKeyActivity() {
+  return Object.entries(keyActivity).map(([hash, r]) => ({
+    hash,
+    label: r.label,
+    role: r.role,
+    ips: Object.entries(r.ips || {})
+      .map(([ip, m]) => ({ ip, first: m.first, last: m.last, count: m.count }))
+      .sort((a, b) => (b.last || 0) - (a.last || 0)),
+  }));
+}
+
 loadModKeys();
 loadDevKeys();
+loadKeyActivity();
 
 module.exports = {
   hashKey,
@@ -163,4 +231,6 @@ module.exports = {
   revokeModKey,
   listModKeys,
   modLog,
+  recordKeyUse,
+  getKeyActivity,
 };

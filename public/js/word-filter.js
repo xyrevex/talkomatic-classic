@@ -89,7 +89,7 @@ class WordFilter {
 
       // Caches:
       // - cache: full-text results (helps repeated renders of the same text)
-      // - lineCache: per-line results (helps live typing — unchanged lines hit)
+      // - lineCache: per-line results (helps live typing unchanged lines hit)
       this.cache = new Map();
       this.cacheSize = 1000;
       this.lineCache = new Map();

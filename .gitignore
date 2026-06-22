@@ -3,11 +3,13 @@ users.json
 repo-tree.html
 CLAUDE.md
 talkomatic-v4.pdf
+update.md
 
 # Staff key store and audit logs (never commit)
 mod-keys.json
 modlog.txt
 audit-log.jsonl
+key-activity.json
 
 # Runtime counters
 anniversary.json

@@ -96,6 +96,19 @@ function finalizeBoardUserStroke(roomId, userId) {
   bs.active.delete(userId);
 }
 
+// Validate a gradient-brush spec from the client: 2-8 hex color stops, else
+// null (a plain solid-color stroke). Trusts nothing about it but the shape.
+function sanitizeGradient(g) {
+  if (!Array.isArray(g)) return null;
+  const out = [];
+  for (const c of g) {
+    if (typeof c === "string" && /^#[0-9a-fA-F]{3,6}$/.test(c))
+      out.push(c.slice(0, 7));
+    if (out.length >= 8) break;
+  }
+  return out.length >= 2 ? out : null;
+}
+
 // ── User Counting ───────────────────────────────────────────────────────────
 
 function getUserRoomsCount(userId) {
@@ -183,6 +196,10 @@ async function pressureCleanup() {
     if (room.users && room.users.length === 1) {
       const soloSince = state.roomSoloSince.get(roomId);
       if (soloSince && now - soloSince >= ttl) {
+        // Staff are exempt: a dev or mod can hold a room open indefinitely,
+        // the same way they bypass AFK and capacity. Never solo-close on them.
+        const soloSocket = findSocketByUserId(room.users[0].id, roomId);
+        if (soloSocket && (soloSocket.isDev || soloSocket.isMod)) continue;
         toDelete.push(roomId);
       }
     } else if (!room.users || room.users.length === 0) {
@@ -369,6 +386,7 @@ function buildBlockList() {
       ip,
       label: (b && b.label) || null,
       by: (b && b.by) || null,
+      reason: (b && b.reason) || null,
       permanent: expiry >= Number.MAX_SAFE_INTEGER,
       expiry: expiry || 0,
     });
@@ -1337,6 +1355,60 @@ function registerSocketHandlers() {
   io().on("connection", (socket) => {
     const clientIp = socket.clientIp || socket.handshake.address;
 
+    // ── Single active tab per browser session ──────────────────────────
+    // Identity is the session id (one per browser, shared across tabs). Two
+    // tabs therefore drove one identity, which crossed names and typed
+    // messages between them. The newest connection now supersedes older ones
+    // from the same session: the old tab is told and dropped, so only one tab
+    // is ever live. Bots (token identities) and the read-only Mod Log board
+    // are exempt, so the Mod Log can stay open beside a room.
+    socket.isModLog = socket.handshake?.auth?.app === "modlog";
+    if (!socket.isBot && !socket.isModLog && socket.handshake?.sessionID) {
+      const sid = socket.handshake.sessionID;
+      for (const [, other] of io().sockets.sockets) {
+        if (other.id === socket.id || other.isBot || other.isModLog) continue;
+        if (other.handshake?.sessionID !== sid) continue;
+        try {
+          other.emit("session superseded", {});
+          other.disconnect(true);
+        } catch (_) {}
+      }
+    }
+
+    // ── Staff key leak watch ────────────────────────────────────────────
+    // A dev/mod key is the only proof of role, so a shared or stolen key is
+    // the real risk. Raise a dev-only alert in the audit feed when the same
+    // key is active from more than one IP at once (the strongest signal), or
+    // when it is used from an IP it has never connected from before.
+    if ((socket.isDev || socket.isMod) && clientIp) {
+      const hash = socket.isDev ? socket.devKeyHash : socket.modKeyHash;
+      const role = socket.isDev ? "dev" : "mod";
+      const label = socket.staffLabel || role;
+      const ips = new Set([clientIp]);
+      for (const [, s] of io().sockets.sockets) {
+        if (s.id === socket.id) continue;
+        const h = s.isDev ? s.devKeyHash : s.isMod ? s.modKeyHash : null;
+        if (h && h === hash) ips.add(s.clientIp || s.handshake.address);
+      }
+      if (ips.size > 1) {
+        audit.recordKeyAlert({
+          role,
+          label,
+          ip: clientIp,
+          kind: "concurrent",
+          detail: `The ${role} key "${label}" is in use from ${ips.size} IPs at the same time: ${[...ips].join(", ")}`,
+        });
+      } else if (socket.keyNewIp) {
+        audit.recordKeyAlert({
+          role,
+          label,
+          ip: clientIp,
+          kind: "new-ip",
+          detail: `The ${role} key "${label}" connected from an IP it has never been used from before`,
+        });
+      }
+    }
+
     // Wraps handlers so one error cannot crash the process; disconnects
     // sockets that error repeatedly
     function safe(fn) {
@@ -1582,11 +1654,20 @@ function registerSocketHandlers() {
         )
           return;
 
+        // Optional client-supplied id lets the drawer undo/redo this exact
+        // stroke later. Ownership for undo is enforced server-side via `owner`,
+        // never by trusting the id, so a forged id can't touch anyone else's work.
+        const strokeId =
+          typeof data.id === "string" && data.id.length <= 64 ? data.id : null;
+
         const stroke = {
+          id: strokeId,
+          owner: userId,
           points: [{ x: data.point.x, y: data.point.y }],
           color: data.color.slice(0, 7),
           size: Math.min(Math.max(data.size, 1), 50),
           eraser: !!data.eraser,
+          gradient: data.eraser ? null : sanitizeGradient(data.gradient),
         };
 
         const bs = getBoardState(socket.roomId);
@@ -1595,9 +1676,11 @@ function registerSocketHandlers() {
 
         socket.to(socket.roomId).emit("board stroke start", {
           userId,
+          id: stroke.id,
           color: stroke.color,
           size: stroke.size,
           eraser: stroke.eraser,
+          gradient: stroke.gradient,
           point: stroke.points[0],
         });
       }),
@@ -1646,6 +1729,74 @@ function registerSocketHandlers() {
         const userId = socket.handshake.session.userId;
         finalizeBoardUserStroke(socket.roomId, userId);
         socket.to(socket.roomId).emit("board stroke end", { userId });
+      }),
+    );
+
+    // ── Undo: remove one of YOUR OWN completed strokes, board-wide ──────
+    socket.on(
+      "board stroke remove",
+      safe(async (data) => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        if (socket.spectating) return;
+        const userId = socket.handshake.session.userId;
+        const id = data?.id;
+        if (typeof id !== "string" || id.length > 64) return;
+
+        const bs = getBoardState(socket.roomId);
+        // Ownership enforced here — you can only remove a stroke you own.
+        const idx = bs.strokes.findIndex(
+          (s) => s.id === id && s.owner === userId,
+        );
+        if (idx !== -1) {
+          bs.strokes.splice(idx, 1);
+        } else {
+          // Could still be the user's active (unfinished) stroke
+          const active = bs.active.get(userId);
+          if (active && active.id === id) bs.active.delete(userId);
+          else return;
+        }
+        socket.to(socket.roomId).emit("board stroke remove", { id });
+      }),
+    );
+
+    // ── Redo: re-add a stroke you previously undid, board-wide ──────────
+    socket.on(
+      "board stroke add",
+      safe(async (data) => {
+        if (!socket.roomId || !socket.handshake.session?.userId) return;
+        if (socket.spectating) return;
+        const userId = socket.handshake.session.userId;
+        const s = data?.stroke;
+        if (!s || typeof s !== "object") return;
+        if (typeof s.id !== "string" || s.id.length > 64) return;
+        if (!Array.isArray(s.points) || s.points.length === 0) return;
+
+        const points = [];
+        for (const p of s.points) {
+          if (typeof p?.x === "number" && typeof p?.y === "number") {
+            points.push({ x: p.x, y: p.y });
+            if (points.length >= MAX_POINTS_PER_STROKE) break;
+          }
+        }
+        if (points.length === 0) return;
+
+        const stroke = {
+          id: s.id,
+          owner: userId,
+          points,
+          color: typeof s.color === "string" ? s.color.slice(0, 7) : "#000000",
+          size: Math.min(Math.max(Number(s.size) || 3, 1), 50),
+          eraser: !!s.eraser,
+          gradient: s.eraser ? null : sanitizeGradient(s.gradient),
+        };
+
+        const bs = getBoardState(socket.roomId);
+        if (bs.strokes.some((x) => x.id === stroke.id)) return; // dedupe
+        bs.strokes.push(stroke);
+        if (bs.strokes.length > MAX_BOARD_STROKES) {
+          bs.strokes = bs.strokes.slice(-MAX_BOARD_STROKES);
+        }
+        socket.to(socket.roomId).emit("board stroke add", { userId, stroke });
       }),
     );
 
@@ -2048,6 +2199,8 @@ function registerSocketHandlers() {
         // Votes are only accepted at or above the minimum room size
         if (room.users.length < CONFIG.LIMITS.MIN_USERS_FOR_VOTING) return;
         if (!room.users.find((u) => u.id === data.targetUserId)) return;
+        // Staff cannot be vote-kicked — mods and devs are immune.
+        if (getUserStaffRole(data.targetUserId)) return;
         if (!room.votes) room.votes = {};
         if (room.votes[userId] === data.targetUserId) delete room.votes[userId];
         else room.votes[userId] = data.targetUserId;
@@ -2529,11 +2682,16 @@ function registerSocketHandlers() {
           targetUser?.username ||
           targetSocket?.handshake?.session?.username ||
           null;
+        const reason =
+          sanitizeMessage(
+            typeof data?.reason === "string" ? data.reason : "",
+          ).slice(0, 500) || null;
         state.blockedIPs.set(ip, {
           expiry,
           label: blockedName,
           by: socket.staffLabel || null,
           ts: Date.now(),
+          reason,
         });
 
         for (const s of findSocketsByIp(ip)) {
@@ -2546,7 +2704,13 @@ function registerSocketHandlers() {
             s.disconnect(true);
           } catch (_) {}
         }
-        logStaff(socket, `ip block ${duration}`, targetUser || { id: targetUserId }, room || "-");
+        logStaff(
+          socket,
+          `ip block ${duration}`,
+          targetUser || { id: targetUserId },
+          room || "-",
+          reason || undefined,
+        );
         socket.emit("staff action result", {
           action: "ip block",
           ok: true,
@@ -2694,7 +2858,7 @@ function registerSocketHandlers() {
           );
         let message = sanitizeMessage(
           typeof data?.message === "string" ? data.message : "",
-        ).slice(0, 300);
+        ).slice(0, 1000);
         if (!message) message = "Please follow the room rules.";
         const targets = findSocketsByUserId(targetUserId);
         if (targets.length === 0)
@@ -2922,11 +3086,15 @@ function registerSocketHandlers() {
       }),
     );
 
-    // ── Spectate: read-only watch, no slot, no listing (dev) ────────────
+    // ── Spectate: read-only watch, no slot, no listing (dev + mod) ──────
+    // Staff (dev or mod) can watch a room live without taking a slot or
+    // appearing. Role is carried in the payload so the client can build the
+    // matching staff panel (devs keep full powers, incl. room size). IP
+    // context is still dev-only — sendDevRoomContext only targets dev sockets.
     socket.on(
       "staff spectate",
       safe(async (data) => {
-        if (!requireDev(socket)) return;
+        if (!requireStaff(socket)) return;
         const roomId = data?.roomId;
         const room = roomId ? state.rooms.get(roomId) : null;
         if (!room)
@@ -2951,6 +3119,11 @@ function registerSocketHandlers() {
           roomName: room.name,
           roomType: room.type,
           layout: room.layout,
+          isDev: !!socket.isDev,
+          isMod: !!socket.isMod,
+          locked: !!room.locked,
+          slowMode: !!room.slowMode,
+          spotlight: !!room.spotlight,
           users: filterUsersForSocket(room.users || [], socket),
           votes: filterVotesForSocket(room, socket),
           currentMessages: filterCurrentMessagesForSocket(room, socket),
@@ -3261,6 +3434,45 @@ function registerSocketHandlers() {
       }),
     );
 
+    // Active staff key sessions (who is connected right now, on which key, from
+    // which IPs) plus the full per-key IP history, for the dashboard's Sessions
+    // tab and to spot a leaked key. Dev only.
+    socket.on(
+      "dev get sessions",
+      safe(async () => {
+        if (!requireDev(socket)) return;
+        const byKey = new Map();
+        for (const [, s] of io().sockets.sockets) {
+          if (!s.isDev && !s.isMod) continue;
+          const hash = s.isDev ? s.devKeyHash : s.modKeyHash;
+          if (!hash) continue;
+          if (!byKey.has(hash))
+            byKey.set(hash, {
+              hash,
+              label: s.staffLabel || (s.isDev ? "dev" : "mod"),
+              role: s.isDev ? "dev" : "mod",
+              ips: new Set(),
+              count: 0,
+            });
+          const g = byKey.get(hash);
+          g.ips.add(s.clientIp || s.handshake.address || "?");
+          g.count += 1;
+        }
+        const sessions = [...byKey.values()].map((g) => ({
+          hash: g.hash,
+          label: g.label,
+          role: g.role,
+          ips: [...g.ips],
+          sessionCount: g.count,
+          multiIp: g.ips.size > 1,
+        }));
+        socket.emit("dev sessions", {
+          sessions,
+          history: roles.getKeyActivity(),
+        });
+      }),
+    );
+
     socket.on(
       "dev unblock ip",
       safe(async (data) => {
@@ -3475,6 +3687,17 @@ function registerSocketHandlers() {
         const roomId = getUserCurrentRoom(targetUserId);
         const room = roomId ? state.rooms.get(roomId) : null;
         const targetUser = room?.users.find((u) => u.id === targetUserId);
+        // Clear any votes already cast against them — staff are vote-immune, so
+        // stale pre-promotion votes shouldn't linger.
+        if (room?.votes) {
+          let changed = false;
+          for (const vid in room.votes)
+            if (room.votes[vid] === targetUserId) {
+              delete room.votes[vid];
+              changed = true;
+            }
+          if (changed) emitRoomVoteUpdates(roomId);
+        }
         let label =
           (data?.label && String(data.label).trim()) ||
           targetUser?.username ||
@@ -3496,6 +3719,75 @@ function registerSocketHandlers() {
           targetUserId,
         });
         socket.emit("dev mod keys", roles.listModKeys());
+      }),
+    );
+
+    // ── Demote: revoke a connected user's mod key by userId (dev) ────────
+    // Lets a dev remove a mod from inside a room (the lobby manage-keys list
+    // revokes by hash; this revokes by the user you're looking at).
+    socket.on(
+      "dev revoke mod from user",
+      safe(async (data) => {
+        if (!requireDev(socket)) return;
+        const targetUserId = data?.targetUserId;
+        if (!targetUserId)
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.BAD_REQUEST,
+              "targetUserId required.",
+            ),
+          );
+        // A dev is never demoted this way; only mods can be removed.
+        const targets = findSocketsByUserId(targetUserId);
+        const hashes = new Set();
+        for (const s of targets)
+          if (s.isMod && !s.isDev && s.modKeyHash) hashes.add(s.modKeyHash);
+        if (hashes.size === 0)
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.NOT_FOUND,
+              "That user is not a moderator.",
+            ),
+          );
+        const roomId = getUserCurrentRoom(targetUserId);
+        const room = roomId ? state.rooms.get(roomId) : null;
+        const targetUser = room?.users.find((u) => u.id === targetUserId);
+        for (const hash of hashes) {
+          await roles.revokeModKey(hash);
+          // Live-downgrade every socket using this key
+          for (const [, s] of io().sockets.sockets) {
+            if (s.isMod && s.modKeyHash === hash) {
+              s.isMod = false;
+              s.modKeyHash = null;
+              s.staffLabel = null;
+              const uid = s.handshake?.session?.userId;
+              if (uid && s.roomId) {
+                const r = state.rooms.get(s.roomId);
+                const u = r?.users?.find((x) => x.id === uid);
+                if (u) {
+                  u.isMod = false;
+                  updateRoom(s.roomId);
+                  updateLobby();
+                }
+              }
+              s.emit("staff revoked", {});
+            }
+          }
+        }
+        logStaff(
+          socket,
+          "revoke mod from user",
+          targetUser || { id: targetUserId },
+          room || "-",
+        );
+        socket.emit("dev mod keys", roles.listModKeys());
+        socket.emit("staff action result", {
+          action: "remove mod",
+          ok: true,
+          targetUserId,
+        });
       }),
     );
 

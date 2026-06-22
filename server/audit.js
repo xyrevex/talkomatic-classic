@@ -42,7 +42,8 @@ function broadcast(entry) {
   for (const [, s] of io().sockets.sockets) {
     if (!s.auditSub) continue;
     if (s.isDev) s.emit("audit entry", entry);
-    else if (s.isMod) s.emit("audit entry", masked);
+    // Key security alerts concern dev/mod keys and IPs, so they are dev-only.
+    else if (s.isMod && !entry.devOnly) s.emit("audit entry", masked);
   }
 }
 
@@ -131,6 +132,22 @@ function recordForcedRename({ userId, from, ip, by, room }) {
   });
 }
 
+// A staff-key security alert: a dev/mod key used from an IP it has never
+// connected from, or active from multiple IPs at once. These are the signals
+// of a shared or leaked key. Dev-only (involves keys + raw IPs).
+function recordKeyAlert({ role, label, ip, kind, detail }) {
+  push({
+    ts: Date.now(),
+    type: "security",
+    devOnly: true,
+    role: role || "?",
+    label: label || role || "?",
+    kind: kind || "alert", // "new-ip" | "concurrent"
+    ip: ip || null,
+    detail: detail || null,
+  });
+}
+
 // A staff comment attached to an existing log entry (discussion / "why?").
 function recordComment({ entryId, role, label, text, ip }) {
   if (!entryId || !text) return;
@@ -148,7 +165,8 @@ function recordComment({ entryId, role, label, text, ip }) {
 function recent(limit = 500, includeIp = true) {
   const n = Math.min(Math.max(1, limit), MAX_ENTRIES);
   const slice = entries.slice(-n);
-  return includeIp ? slice : slice.map(redactForMod);
+  // Devs see everything; mods get IP-redacted entries with dev-only ones removed.
+  return includeIp ? slice : slice.filter((e) => !e.devOnly).map(redactForMod);
 }
 
 function setAuditSub(socket, on) {
@@ -189,6 +207,7 @@ module.exports = {
   recordAction,
   recordIdentity,
   recordForcedRename,
+  recordKeyAlert,
   recordComment,
   recent,
   setAuditSub,

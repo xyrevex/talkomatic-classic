@@ -5,7 +5,7 @@
 class TalkomaticPopupManager {
   constructor() {
     // Current version - update this when you release new versions
-    this.currentVersion = "5.0.0";
+    this.currentVersion = "5.1.0";
     // Cookie names
     this.cookieNames = {
       lastShown: "talkomatic_popup_last_shown",
@@ -225,6 +225,32 @@ class TalkomaticPopupManager {
             .talkomatic-feature-list li:last-child {
                 border-bottom: none;
             }
+            .talkomatic-feature-list.tk-iconed li {
+                padding-left: 40px;
+            }
+            .talkomatic-feature-list.tk-iconed li:hover {
+                margin: 0;
+                padding-left: 40px;
+                padding-right: 0;
+            }
+            .talkomatic-feature-list.tk-iconed li:before {
+                display: none;
+            }
+            .talkomatic-feature-list .tk-lic {
+                position: absolute;
+                left: 8px;
+                top: 18px;
+                color: #FF9800;
+                font-size: 15px;
+                width: 22px;
+                text-align: center;
+            }
+            .talkomatic-update-section h3 i {
+                margin-right: 8px;
+            }
+            .talkomatic-feature-icon i {
+                line-height: 1;
+            }
             .talkomatic-badge {
                 display: inline-block;
                 padding: 4px 10px;
@@ -435,64 +461,117 @@ class TalkomaticPopupManager {
                 <div class="talkomatic-popup-content">
                     <div class="talkomatic-popup-header">
                         <button class="talkomatic-popup-close" data-action="close">&times;</button>
-                        <h2 class="talkomatic-popup-title">🎂 Talkomatic is 2 Years Old!</h2>
-                        <p class="talkomatic-popup-version">Anniversary Update, ${currentDate}</p>
-                        <span class="talkomatic-version-pill">Happy Birthday</span>
+                        <h2 class="talkomatic-popup-title"><i class="fas fa-cake-candles"></i> Talkomatic is 2 Years Old</h2>
+                        <p class="talkomatic-popup-version">The v4 Anniversary Update, ${currentDate}</p>
+                        <span class="talkomatic-version-pill">Version 4.1</span>
                     </div>
 
                     <div class="talkomatic-popup-body">
 
                         <div class="talkomatic-update-section">
                             <div class="talkomatic-highlight-box">
-                                <h4>Two Years of Talkomatic</h4>
-                                <p>It started in 1973 on the PLATO system as the very first online chat. In 2024 it came back to life, open source. Today it turns two. To celebrate, we shipped a big update focused on safety, polish, and a little party. Thank you for being here.</p>
+                                <h4>Two years of Talkomatic</h4>
+                                <p>Talkomatic was born in 1973 on the PLATO system as the very first online chat. In 2024 it came back to life as open source. Today it turns two. To mark the moment we shipped our biggest update yet, focused on safety, a redesigned drawing board, and a lot of polish. Thank you for being here and typing letter by letter with us.</p>
                             </div>
                         </div>
 
                         <div class="talkomatic-update-section">
-                            <h3>🎉 What's New Today</h3>
+                            <h3><i class="fas fa-star"></i> The Highlights</h3>
                             <div class="talkomatic-feature-grid">
                                 <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">🎂</div>
+                                    <div class="talkomatic-feature-icon"><i class="fas fa-cake-candles"></i></div>
                                     <h4>Birthday Celebration</h4>
-                                    <p>Light a candle from the lobby and watch the whole community's count climb together. Drop back in anytime from the cake in the menu.</p>
+                                    <p>Light a candle from the lobby and watch the community's count climb together. Drop back in anytime from the cake in the menu.</p>
                                 </div>
                                 <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">🛡️</div>
+                                    <div class="talkomatic-feature-icon"><i class="fas fa-shield-halved"></i></div>
                                     <h4>A Real Moderation Team</h4>
-                                    <p>Talkomatic now has trusted moderators and developers with proper tools to keep rooms safe, calm raids, and handle reports quickly.</p>
+                                    <p>Trusted moderators and developers now have proper tools to keep rooms safe, calm raids, and handle reports quickly.</p>
                                 </div>
                                 <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon">🎨</div>
-                                    <h4>The Classic Look</h4>
-                                    <p>The original theme is the default again. World Cup mode is now optional, with a toggle in the bottom left whenever you want it.</p>
+                                    <div class="talkomatic-feature-icon"><i class="fas fa-paintbrush"></i></div>
+                                    <h4>A New Talkoboard</h4>
+                                    <p>The shared drawing board got a full makeover, with gradient brushes, a color panel, undo and redo, and saving your art as an image.</p>
                                 </div>
                             </div>
                         </div>
 
                         <div class="talkomatic-update-section">
-                            <h3>🔒 Safer and Cleaner</h3>
-                            <ul class="talkomatic-feature-list">
-                                <li>Moderators can remove bad actors instantly, backed by a private log that keeps staff accountable to each other <span class="talkomatic-badge new">NEW</span></li>
-                                <li>Your IP address stays private. Only developers can ever see it, never moderators or other users <span class="talkomatic-badge privacy">PRIVACY</span></li>
-                                <li>Cleaner menus, pop ups, and notifications across the lobby and rooms <span class="talkomatic-badge improved">IMPROVED</span></li>
-                                <li>Much better fit on phones, with controls that no longer run off the screen <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li>Room sizes can now be adjusted for special events and busy nights <span class="talkomatic-badge new">NEW</span></li>
+                            <h3><i class="fas fa-cake-candles"></i> Birthday and Celebration</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-bullhorn tk-lic"></i> A festive birthday banner now sits at the top of the lobby <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-cake-candles tk-lic"></i> An animated birthday card opens once with a short history of Talkomatic, confetti, and a party horn <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-fire-flame-curved tk-lic"></i> A live community candle counter, shared across everyone on the site and saved on the server so it keeps growing <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-rotate-right tk-lic"></i> Revisit the celebration anytime from the 2nd Birthday link in the lobby menu <span class="talkomatic-badge new">NEW</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
+                            <h3><i class="fas fa-paintbrush"></i> The Talkoboard, Reimagined</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-palette tk-lic"></i> A full color panel with a preset palette, a custom picker, an eyedropper, your recent colors, and the colors other people in the room are using <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-wand-magic-sparkles tk-lic"></i> Gradient brushes named Rainbow, Sunset, Ocean, Neon, Fire, and Candy that flow smoothly and look the same for everyone in the room <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-hand tk-lic"></i> A hand tool to drag the board around, which makes panning easy on a phone <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-rotate-left tk-lic"></i> Undo and redo your own strokes, kept in sync for everyone <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-floppy-disk tk-lic"></i> Save the whole board as an image with one tap <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-wrench tk-lic"></i> A redesigned toolbar, a cleaner board chat with a colored avatar per person, and much better behavior on mobile <span class="talkomatic-badge improved">IMPROVED</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
+                            <h3><i class="fas fa-shield-halved"></i> Moderation and Safety</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-user-shield tk-lic"></i> A trusted team of moderators and developers now keeps rooms safe, with real tools to calm raids and handle reports fast <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-gauge-high tk-lic"></i> The team works from a clean dashboard and a shared private log that keeps everyone accountable for every action <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-circle-info tk-lic"></i> If your access is ever blocked you now see a clear full screen notice with a live countdown and a Discord link to appeal, instead of a silent retry <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li><i class="fas fa-user-secret tk-lic"></i> Your IP address stays private. Only developers can ever see it, never moderators or other users <span class="talkomatic-badge privacy">PRIVACY</span></li>
+                                <li><i class="fas fa-lock tk-lic"></i> Staff names like Mod, Dev, and Admin are protected, so nobody can pretend to be the team <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-circle-check tk-lic"></i> Quiet safeguards watch for shared or stolen staff access and warn the team right away <span class="talkomatic-badge new">NEW</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
+                            <h3><i class="fas fa-users"></i> Rooms and Layout</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-up-right-and-down-left-from-center tk-lic"></i> Room size can now be adjusted for special events and busy nights <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-table-cells tk-lic"></i> Bigger rooms use a balanced grid that fills the space instead of squishing everyone into thin slivers <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li><i class="fas fa-plug-circle-check tk-lic"></i> Reconnecting drops you back into your room instead of leaving a ghost behind for everyone else <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-window-restore tk-lic"></i> One active tab per browser, so two tabs can no longer cross your name or your typed messages <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-text-width tk-lic"></i> Long usernames stay on one line and trim neatly instead of wrapping to two <span class="talkomatic-badge fixed">FIXED</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
+                            <h3><i class="fas fa-wand-magic-sparkles"></i> Everyday Polish</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-link tk-lic"></i> Links in chat now include the whole address, so paths and handles like youtube.com/@name, query strings, and fragments all work <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-keyboard tk-lic"></i> Joining or leaving a room no longer steals your cursor or interrupts your typing, even with the Talkoboard open <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-bars-staggered tk-lic"></i> Cleaner menus, dialogs, and notifications across the lobby and rooms <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li><i class="fas fa-mobile-screen tk-lic"></i> A batch of mobile fixes, including no more white bars at the top and bottom or behind the keyboard <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-bullhorn tk-lic"></i> A new Update Notes link in the lobby menu reopens this announcement anytime <span class="talkomatic-badge new">NEW</span></li>
                             </ul>
                         </div>
 
                         <div class="talkomatic-update-section">
                             <div class="talkomatic-highlight-box">
-                                <h4>Come Celebrate</h4>
-                                <p>Open the 🎂 2nd Birthday link in the lobby menu, light a candle, and say happy birthday in any room. Here is to many more years of typing letter by letter together.</p>
+                                <h4>Your classic look, back by default</h4>
+                                <p>The original Talkomatic theme is the default again. World Cup mode is now optional, with a toggle in the bottom left whenever you want it, and your choice is remembered.</p>
                             </div>
                         </div>
 
                         <div class="talkomatic-update-section">
-                            <h3>💬 Built With You</h3>
+                            <h3><i class="fas fa-bug-slash"></i> Bug Fixes</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-circle-check tk-lic"></i> Fixed the false "this username or location is already in a room" error that could block you from joining even after clearing cookies <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-circle-check tk-lic"></i> Wiping a user's typed text now clears it from their own box too, not just from everyone else's screen <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-circle-check tk-lic"></i> Many layout and overflow fixes across desktop and mobile <span class="talkomatic-badge fixed">FIXED</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
                             <div class="talkomatic-highlight-box">
-                                <h4>Talkomatic is open source</h4>
-                                <p>Everything here is shaped by community feedback. Report bugs, suggest ideas, or just hang out with us on Discord. Thank you for two great years.</p>
+                                <h4>Built with you</h4>
+                                <p>Talkomatic is open source and shaped by community feedback. Report a bug, suggest an idea, or just hang out with us on Discord. Here is to many more years of typing together.</p>
                             </div>
                         </div>
 

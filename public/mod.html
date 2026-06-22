@@ -3,26 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Talkomatic Moderation Log</title>
+    <meta name="theme-color" content="#0d0d0d" />
+    <title>Talkomatic Moderation Dashboard</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/png" href="images/icons/favicon.png" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+      integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <style>
       :root {
         color-scheme: dark;
-        --bg: #000;
-        --panel: #0d0d0d;
-        --panel2: #141414;
-        --line: #333;
-        --line2: #262626;
-        --txt: #eee;
-        --dim: #9a9a9a;
-        --dim2: #6f6f6f;
+        --bg: #0e0d0d;
+        --panel: #0e0d0d;
+        --panel2: #0e0d0d;
+        --sidebar: #0e0d0d;
+        --line: #2a2e38;
+        --line2: #1d2029;
+        --txt: #e9eaee;
+        --dim: #9a9fab;
+        --dim2: #6b7080;
         --orange: #ff9800;
-        --red: #ff4d4d;
+        --orange-soft: rgba(255, 152, 0, 0.12);
+        --red: #ff5468;
         --amber: #ffb454;
         --blue: #5aa9ff;
         --purple: #c08bff;
         --green: #57d9a3;
+        --radius: 10px;
       }
       * {
         box-sizing: border-box;
@@ -30,6 +41,7 @@
       html,
       body {
         margin: 0;
+        height: 100%;
         background: var(--bg);
         color: var(--txt);
         font-family:
@@ -39,15 +51,20 @@
           Roboto,
           Arial,
           sans-serif;
+        font-size: 14px;
       }
       a {
         color: var(--orange);
+        text-decoration: none;
       }
       .mono {
         font-family: "Courier New", monospace;
       }
+      .hidden {
+        display: none !important;
+      }
 
-      /* states */
+      /* ── Gate states (loading / denied) ── */
       .ml-state {
         text-align: center;
         padding: 90px 20px;
@@ -56,82 +73,128 @@
       .ml-state h2 {
         color: var(--txt);
         margin: 0 0 8px;
+        font-size: 22px;
       }
-      .ml-state.denied h2 {
+      .ml-state.denied .ml-state-icon {
         color: var(--red);
       }
-      .hidden {
-        display: none !important;
+      .ml-state-icon {
+        font-size: 46px;
+        color: var(--orange);
+        margin-bottom: 14px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--panel2);
+        border: 1px solid var(--line);
+        color: var(--txt);
+        border-radius: 8px;
+        padding: 9px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
+      }
+      .btn:hover {
+        border-color: var(--orange);
+        color: var(--orange);
+      }
+      .btn.primary {
+        background: var(--orange);
+        border-color: var(--orange);
+        color: #1a1200;
+      }
+      .btn.primary:hover {
+        background: #ffad33;
+        color: #1a1200;
+      }
+      .btn.danger {
+        color: var(--red);
+        border-color: var(--line);
+      }
+      .btn.danger:hover {
+        background: var(--red);
+        border-color: var(--red);
+        color: #1a0005;
+      }
+      .btn.sm {
+        padding: 6px 10px;
+        font-size: 12px;
       }
 
-      /* top bar */
-      .ml-top {
+      /* ── Top bar ── */
+      .topbar {
         position: sticky;
         top: 0;
-        z-index: 10;
+        z-index: 40;
+        height: 56px;
         display: flex;
         align-items: center;
         gap: 12px;
-        flex-wrap: wrap;
-        padding: 12px 18px;
-        background: var(--panel);
-        border-bottom: 2px solid var(--orange);
+        padding: 0 16px;
+        background: var(--sidebar);
+        border-bottom: 1px solid var(--line);
       }
-      .ml-brand {
-        font-size: 16px;
-        font-weight: 800;
-        color: var(--orange);
-        letter-spacing: 0.3px;
-        white-space: nowrap;
-      }
-      .ml-brand small {
+      .icon-btn {
+        width: 38px;
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 1px solid transparent;
         color: var(--dim);
-        font-weight: 600;
-        font-size: 11px;
-        display: block;
-        letter-spacing: 0.4px;
-      }
-      .ml-me {
-        font-size: 12px;
-        color: var(--dim);
-      }
-      .ml-spacer {
-        flex: 1 1 40px;
-      }
-      .ml-tbtn {
-        background: var(--bg);
-        border: 1px solid var(--line);
-        color: var(--txt);
-        border-radius: 0;
-        padding: 8px 13px;
-        font-size: 12.5px;
-        font-weight: 600;
+        border-radius: 8px;
         cursor: pointer;
-        white-space: nowrap;
+        font-size: 16px;
       }
-      .ml-tbtn:hover {
-        border-color: var(--orange);
+      .icon-btn:hover {
+        background: var(--panel2);
         color: var(--orange);
       }
-      .ml-tbtn.primary {
-        background: var(--orange);
-        border-color: var(--orange);
-        color: #000;
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        color: var(--dim2);
+        white-space: nowrap;
+      }
+
+      .fa-shield-halved {
+        color: var(--orange);
+      }
+      .topbar .spacer {
+        flex: 1;
+      }
+      .me-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--dim);
       }
 
       /* role chips */
       .chip {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
         font-size: 10px;
         font-weight: 800;
-        padding: 2px 7px;
-        border-radius: 0;
-        letter-spacing: 0.6px;
-        vertical-align: middle;
+        padding: 3px 8px;
+        border-radius: 20px;
+        letter-spacing: 0.5px;
       }
       .chip.dev {
         background: var(--red);
-        color: #1a0000;
+        color: #1a0005;
       }
       .chip.mod {
         background: var(--orange);
@@ -146,140 +209,259 @@
         font-weight: 800;
       }
 
-      /* intro + legend */
-      .ml-intro {
-        padding: 10px 18px;
-        font-size: 12.5px;
-        color: var(--dim);
-        border-bottom: 1px solid var(--line2);
-        background: var(--panel);
+      /* ── Layout: sidebar + main ── */
+      .shell {
+        display: flex;
+        min-height: calc(100vh - 56px);
       }
-      .ml-legend {
-        padding: 12px 18px;
-        border-bottom: 1px solid var(--line2);
-        background: var(--panel2);
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-        gap: 8px 18px;
+      .sidebar {
+        position: sticky;
+        top: 56px;
+        align-self: flex-start;
+        height: calc(100vh - 56px);
+        width: 232px;
+        flex: 0 0 232px;
+        background: var(--sidebar);
+        border-right: 1px solid var(--line);
+        padding: 14px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        transition: margin-left 0.22s ease;
       }
-      .leg {
+      body.nav-closed .sidebar {
+        margin-left: -233px;
+      }
+      .nav-item {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 12px;
+        gap: 12px;
+        padding: 11px 13px;
+        border-radius: 9px;
         color: var(--dim);
-      }
-      .leg b {
-        color: var(--txt);
-        font-weight: 600;
-      }
-      .swatch {
-        width: 12px;
-        height: 12px;
-        flex: none;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-      }
-
-      /* toolbar */
-      .ml-toolbar {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        flex-wrap: wrap;
-        padding: 10px 18px;
-        border-bottom: 1px solid var(--line2);
-        background: var(--panel);
-      }
-      .ml-search {
-        flex: 1 1 200px;
-        min-width: 150px;
-        background: var(--bg);
-        border: 1px solid var(--line);
-        color: var(--txt);
-        padding: 9px 12px;
-        font-size: 13px;
-        outline: none;
-      }
-      .ml-search:focus {
-        border-color: var(--orange);
-      }
-      .ml-filters {
-        display: flex;
-        gap: 0;
-      }
-      .ml-fbtn {
-        background: var(--bg);
-        border: 1px solid var(--line);
-        border-left: none;
-        color: var(--dim);
-        padding: 9px 13px;
-        font-size: 12.5px;
         cursor: pointer;
         font-weight: 600;
+        font-size: 13.5px;
+        border: 1px solid transparent;
+        user-select: none;
       }
-      .ml-fbtn:first-child {
-        border-left: 1px solid var(--line);
+      .nav-item .ni-icon {
+        width: 18px;
+        text-align: center;
+        font-size: 15px;
       }
-      .ml-fbtn.active {
+      .nav-item .ni-badge {
+        margin-left: auto;
+        background: var(--panel2);
+        color: var(--dim);
+        font-size: 11px;
+        font-weight: 700;
+        padding: 1px 8px;
+        border-radius: 20px;
+        min-width: 22px;
+        text-align: center;
+      }
+      .nav-item:hover {
+        background: var(--panel2);
+        color: var(--txt);
+      }
+      .nav-item.active {
+        background: var(--orange-soft);
+        color: var(--orange);
+        border-color: rgba(255, 152, 0, 0.35);
+      }
+      .nav-item.active .ni-badge {
         background: var(--orange);
-        border-color: var(--orange);
-        color: #000;
+        color: #1a1200;
+      }
+      .nav-sep {
+        height: 1px;
+        background: var(--line2);
+        margin: 8px 6px;
+      }
+      .nav-foot {
+        margin-top: auto;
+        font-size: 11px;
+        color: var(--dim2);
+        padding: 8px 8px 2px;
+      }
+      .nav-backdrop {
+        display: none;
       }
 
-      /* focus bar */
-      .ml-focus {
-        padding: 9px 18px;
-        background: #1a1206;
-        border-bottom: 1px solid var(--orange);
-        font-size: 12.5px;
-        color: var(--orange);
+      .main {
+        flex: 1;
+        min-width: 0;
+        padding: 0;
+      }
+      .panel {
+        display: none;
+      }
+      .panel.active {
+        display: block;
+      }
+      .panel-head {
         display: flex;
         align-items: center;
         gap: 12px;
         flex-wrap: wrap;
+        padding: 16px 22px;
+        border-bottom: 1px solid var(--line2);
+        background: var(--panel);
       }
-      .ml-focus .sum {
-        color: var(--dim);
+      .panel-head h1 {
+        font-size: 17px;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
-      .ml-focus .sum b {
-        color: var(--txt);
+      .panel-head h1 i {
+        color: var(--orange);
+      }
+      .panel-head .sub {
+        color: var(--dim2);
+        font-size: 12px;
+      }
+      .panel-head .ph-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .panel-body {
+        padding: 16px 22px 70px;
       }
 
-      .ml-roster {
-        padding: 8px 18px;
+      /* ── Activity toolbar ── */
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 12px 22px;
+        border-bottom: 1px solid var(--line2);
+        background: var(--panel);
+        position: sticky;
+        top: 56px;
+        z-index: 20;
+      }
+      .search-wrap {
+        position: relative;
+        flex: 1 1 220px;
+        min-width: 160px;
+      }
+      .search-wrap i {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--dim2);
+        font-size: 13px;
+      }
+      .search {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        color: var(--txt);
+        padding: 10px 12px 10px 34px;
+        font-size: 13px;
+        outline: none;
+        border-radius: 8px;
+      }
+      .search:focus {
+        border-color: var(--orange);
+      }
+      .seg {
+        display: inline-flex;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .seg button {
+        background: transparent;
+        border: none;
+        color: var(--dim);
+        padding: 9px 14px;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .seg button.active {
+        background: var(--orange);
+        color: #1a1200;
+      }
+
+      .focusbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 10px 22px;
+        background: var(--orange-soft);
+        border-bottom: 1px solid rgba(255, 152, 0, 0.3);
+        font-size: 12.5px;
+        color: var(--orange);
+      }
+      .focusbar .sum {
+        color: var(--dim);
+      }
+      .focusbar .sum b {
+        color: var(--txt);
+      }
+      .roster {
+        padding: 9px 22px;
         font-size: 12px;
         color: var(--dim2);
         border-bottom: 1px solid var(--line2);
+        background: var(--panel);
       }
-      .ml-roster b {
-        color: var(--dim);
-        font-weight: 600;
+      .roster b {
+        font-weight: 700;
       }
 
-      /* list + entries */
-      .ml-list {
-        padding: 10px 12px 60px;
-        max-width: 1080px;
-        margin: 0 auto;
+      .feed {
+        padding: 14px 22px 70px;
       }
-      .ml-empty {
+      .feed-note {
+        color: var(--dim2);
+        font-size: 11.5px;
+        text-align: center;
+        padding: 6px 0 12px;
+      }
+      .empty {
         text-align: center;
         color: var(--dim2);
-        padding: 40px;
+        padding: 48px 20px;
         font-size: 13px;
       }
+      .empty i {
+        font-size: 30px;
+        display: block;
+        margin-bottom: 12px;
+        color: var(--line);
+      }
+
+      /* ── Entry cards ── */
       .entry {
         background: var(--panel);
         border: 1px solid var(--line2);
         border-left: 4px solid var(--dim2);
-        margin: 9px 0;
+
+        margin: 10px 0;
       }
       .entry .row1 {
         display: flex;
         gap: 10px;
-        align-items: baseline;
-        padding: 10px 12px 4px;
+        align-items: center;
+        padding: 11px 13px 5px;
         flex-wrap: wrap;
+      }
+      .entry .cat-ic {
+        font-size: 13px;
       }
       .entry .act {
         font-weight: 700;
@@ -292,7 +474,7 @@
         font-variant-numeric: tabular-nums;
       }
       .entry .meta {
-        padding: 0 12px 10px;
+        padding: 0 13px 11px;
         font-size: 12px;
         color: var(--dim);
         word-break: break-word;
@@ -313,69 +495,84 @@
         border-color: var(--orange);
       }
       .entry .detail {
-        margin: 0 12px 10px;
-        padding: 7px 10px;
+        margin: 0 13px 11px;
+        padding: 8px 11px;
         background: var(--bg);
         border: 1px solid var(--line2);
+        border-radius: 6px;
         color: var(--txt);
         font-size: 12.5px;
         white-space: pre-wrap;
         word-break: break-word;
       }
-      /* category colors */
+      .cat-security {
+        border-left-color: var(--red);
+        border-color: rgba(255, 84, 104, 0.4);
+        background: rgba(255, 84, 104, 0.07);
+      }
+      .cat-security .act,
+      .cat-security .cat-ic {
+        color: var(--red);
+      }
       .cat-destructive {
         border-left-color: var(--red);
       }
-      .cat-destructive .act {
+      .cat-destructive .act,
+      .cat-destructive .cat-ic {
         color: var(--red);
       }
       .cat-moderation {
         border-left-color: var(--amber);
       }
-      .cat-moderation .act {
+      .cat-moderation .act,
+      .cat-moderation .cat-ic {
         color: var(--amber);
       }
       .cat-broadcast {
         border-left-color: var(--blue);
       }
-      .cat-broadcast .act {
+      .cat-broadcast .act,
+      .cat-broadcast .cat-ic {
         color: var(--blue);
       }
       .cat-config {
         border-left-color: var(--purple);
       }
-      .cat-config .act {
+      .cat-config .act,
+      .cat-config .cat-ic {
         color: var(--purple);
       }
       .cat-signin {
         border-left-color: var(--green);
       }
-      .cat-signin .act {
+      .cat-signin .act,
+      .cat-signin .cat-ic {
         color: var(--green);
       }
       .cat-namechange {
         border-left-color: var(--amber);
       }
-      .cat-namechange .act {
+      .cat-namechange .act,
+      .cat-namechange .cat-ic {
         color: var(--amber);
       }
       .cat-other {
         border-left-color: var(--dim2);
       }
-      .cat-other .act {
+      .cat-other .act,
+      .cat-other .cat-ic {
         color: var(--dim);
       }
 
       /* comments */
       .comments {
         border-top: 1px dashed var(--line2);
-        margin: 0 12px;
+        margin: 0 13px;
         padding: 8px 0;
       }
       .cmt {
         font-size: 12.5px;
         padding: 5px 0;
-        color: var(--txt);
         display: flex;
         gap: 8px;
       }
@@ -390,7 +587,6 @@
         color: var(--orange);
       }
       .cmt .ctext {
-        color: var(--txt);
         word-break: break-word;
         flex: 1;
       }
@@ -402,101 +598,369 @@
       .cmtbox {
         display: flex;
         gap: 6px;
-        padding: 6px 12px 12px;
+        padding: 6px 13px 12px;
       }
       .cmtbox input {
         flex: 1;
         background: var(--bg);
         border: 1px solid var(--line);
         color: var(--txt);
-        padding: 7px 10px;
+        padding: 8px 11px;
         font-size: 12.5px;
         outline: none;
+        border-radius: 7px;
       }
       .cmtbox input:focus {
         border-color: var(--orange);
       }
-      .cmtbox button {
-        background: var(--bg);
-        border: 1px solid var(--line);
-        color: var(--orange);
-        padding: 7px 12px;
-        font-size: 12px;
+
+      /* ── Tables (bans / mods) ── */
+      .cards {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .rowcard {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        background: var(--panel);
+        border: 1px solid var(--line2);
+        border-radius: 9px;
+        padding: 13px 15px;
+      }
+      .rowcard .rc-main {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+      }
+      .rowcard .rc-title {
         font-weight: 700;
-        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
       }
-      .cmtbox button:hover {
-        background: var(--orange);
-        color: #000;
+      .rowcard .rc-sub {
+        font-size: 12px;
+        color: var(--dim);
       }
-      @media (max-width: 560px) {
-        .entry .when {
+      .rowcard .rc-sub .ip {
+        color: var(--amber);
+      }
+      .rowcard .rc-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .pill {
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 4px 11px;
+        border-radius: 20px;
+        white-space: nowrap;
+      }
+      .pill.live {
+        background: rgba(87, 217, 163, 0.15);
+        color: var(--green);
+      }
+      .pill.perm {
+        background: rgba(255, 84, 104, 0.15);
+        color: var(--red);
+      }
+      .avatar {
+        width: 34px;
+        height: 34px;
+        flex: none;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 14px;
+        color: #1a1200;
+      }
+
+      /* ── Guide ── */
+      .guide p {
+        color: var(--dim);
+        line-height: 1.65;
+      }
+      .guide h2 {
+        font-size: 15px;
+        margin: 26px 0 12px;
+        color: var(--txt);
+      }
+      .legend {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 10px;
+      }
+      .leg {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 12.5px;
+        color: var(--dim);
+        background: var(--panel);
+        border: 1px solid var(--line2);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      .leg .leg-ic {
+        width: 22px;
+        text-align: center;
+        font-size: 14px;
+      }
+      .leg b {
+        color: var(--txt);
+        font-weight: 600;
+      }
+
+      /* ── Responsive ── */
+      @media (max-width: 860px) {
+        .sidebar {
+          position: fixed;
+          top: 56px;
+          left: 0;
+          z-index: 60;
           margin-left: 0;
-          width: 100%;
+          transform: translateX(0);
+          transition: transform 0.22s ease;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
         }
-        .ml-brand {
-          font-size: 14px;
+        body.nav-closed .sidebar {
+          margin-left: 0;
+          transform: translateX(-105%);
+        }
+        body:not(.nav-closed) .nav-backdrop {
+          display: block;
+          position: fixed;
+          inset: 56px 0 0 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 55;
+        }
+        .panel-body,
+        .feed {
+          padding-left: 14px;
+          padding-right: 14px;
+        }
+        .panel-head,
+        .toolbar,
+        .focusbar,
+        .roster {
+          padding-left: 14px;
+          padding-right: 14px;
         }
       }
     </style>
   </head>
-  <body>
+  <body class="nav-closed">
+    <!-- Loading / denied gates -->
     <div id="loading" class="ml-state">
-      <h2>Loading…</h2>
+      <div class="ml-state-icon"><i class="fas fa-shield-halved"></i></div>
+      <h2>Loading dashboard</h2>
       <p>Verifying your staff key.</p>
     </div>
 
     <div id="denied" class="ml-state denied hidden">
+      <div class="ml-state-icon"><i class="fas fa-lock"></i></div>
       <h2>Access denied</h2>
-      <p>This page is for moderators and developers only.</p>
-      <p>
-        <button id="enterKeyBtn" class="ml-tbtn primary">
-          🔑 Enter staff key
+      <p>This dashboard is for moderators and developers only.</p>
+      <p style="margin-top: 20px">
+        <button id="enterKeyBtn" class="btn primary">
+          <i class="fas fa-key"></i> Enter staff key
         </button>
         &nbsp;
-        <a class="ml-tbtn" href="/index.html">← Back to lobby</a>
+        <a class="btn" href="/index.html">
+          <i class="fas fa-arrow-left"></i> Back to lobby
+        </a>
       </p>
     </div>
 
+    <!-- Dashboard -->
     <div id="app" class="hidden">
-      <header class="ml-top">
-        <div class="ml-brand">Talkomatic™ <small>Moderation Log</small></div>
-        <span id="meInfo" class="ml-me"></span>
-        <div class="ml-spacer"></div>
-        <button id="legendBtn" class="ml-tbtn">Legend</button>
-        <button id="helpBtn" class="ml-tbtn">Help</button>
-        <a class="ml-tbtn" href="/index.html">← Lobby</a>
+      <header class="topbar">
+        <button id="navToggle" class="icon-btn" title="Menu">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div class="brand">
+          <i class="fas fa-shield-halved" style="color: var(--dim2)"></i>
+          Mod Dashboard
+        </div>
+        <div class="spacer"></div>
+        <span id="meInfo" class="me-chip"></span>
+        <a class="btn sm" href="/index.html">
+          <i class="fas fa-arrow-left"></i> Lobby
+        </a>
       </header>
 
-      <div class="ml-intro">
-        Every staff action and every user identity change is recorded here,
-        live. Click a <span class="uref">name</span> to trace that user. Add a
-        comment under any entry to ask “why?” or note context. Comments are
-        permanent and visible to all staff.
+      <div class="shell">
+        <nav id="sidebar" class="sidebar">
+          <div class="nav-item active" data-tab="activity">
+            <span class="ni-icon"><i class="fas fa-rectangle-list"></i></span>
+            Activity
+          </div>
+          <div class="nav-item" data-tab="bans" data-dev="1">
+            <span class="ni-icon"><i class="fas fa-ban"></i></span>
+            Ban list
+            <span class="ni-badge" id="bansBadge">0</span>
+          </div>
+          <div class="nav-item" data-tab="mods" data-dev="1">
+            <span class="ni-icon"><i class="fas fa-user-shield"></i></span>
+            Moderators
+            <span class="ni-badge" id="modsBadge">0</span>
+          </div>
+          <div class="nav-item" data-tab="sessions" data-dev="1">
+            <span class="ni-icon"><i class="fas fa-shield-halved"></i></span>
+            Sessions
+            <span class="ni-badge" id="sessionsBadge">0</span>
+          </div>
+          <div class="nav-sep"></div>
+          <div class="nav-item" data-tab="guide">
+            <span class="ni-icon"><i class="fas fa-circle-question"></i></span>
+            Guide
+          </div>
+          <div class="nav-foot">
+            Live, permanent record. Keeps staff accountable to each other.
+          </div>
+        </nav>
+        <div id="navBackdrop" class="nav-backdrop"></div>
+
+        <main class="main">
+          <!-- Activity -->
+          <section id="tab-activity" class="panel active">
+            <div class="toolbar">
+              <div class="search-wrap">
+                <i class="fas fa-magnifying-glass"></i>
+                <input
+                  id="search"
+                  class="search"
+                  placeholder="Search name, action, IP, room, message, comment"
+                />
+              </div>
+              <div class="seg" id="filterSeg">
+                <button class="active" data-f="all">All</button>
+                <button data-f="action">Actions</button>
+                <button data-f="identity">Identity</button>
+              </div>
+            </div>
+            <div id="focusBar" class="focusbar hidden"></div>
+            <div id="roster" class="roster"></div>
+            <div id="feedNote" class="feed-note hidden"></div>
+            <div id="list" class="feed"></div>
+          </section>
+
+          <!-- Bans -->
+          <section id="tab-bans" class="panel">
+            <div class="panel-head">
+              <h1><i class="fas fa-ban"></i> Ban list</h1>
+              <span class="sub" id="bansSub">IP blocks placed by staff</span>
+              <div class="ph-actions">
+                <button id="bansRefresh" class="btn sm">
+                  <i class="fas fa-arrows-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="bansList" class="cards"></div>
+            </div>
+          </section>
+
+          <!-- Mods -->
+          <section id="tab-mods" class="panel">
+            <div class="panel-head">
+              <h1><i class="fas fa-user-shield"></i> Moderators</h1>
+              <span class="sub" id="modsSub">Active mod keys</span>
+              <div class="ph-actions">
+                <button id="grantMod" class="btn sm primary">
+                  <i class="fas fa-user-plus"></i> Grant mod
+                </button>
+                <button id="modsRefresh" class="btn sm">
+                  <i class="fas fa-arrows-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="modsList" class="cards"></div>
+            </div>
+          </section>
+
+          <!-- Sessions -->
+          <section id="tab-sessions" class="panel">
+            <div class="panel-head">
+              <h1><i class="fas fa-shield-halved"></i> Key sessions</h1>
+              <span class="sub" id="sessionsSub">
+                Who is connected on which staff key
+              </span>
+              <div class="ph-actions">
+                <button id="sessionsRefresh" class="btn sm">
+                  <i class="fas fa-arrows-rotate"></i> Refresh
+                </button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <p style="color: var(--dim2); font-size: 12.5px; margin: 0 0 14px">
+                A key showing more than one IP at once, or a new IP in its
+                history, may mean the key was shared or leaked. New IP and
+                multi IP alerts also appear in Activity.
+              </p>
+              <div id="sessionsActive" class="cards"></div>
+              <h2
+                style="
+                  font-size: 14px;
+                  margin: 26px 0 10px;
+                  color: var(--dim);
+                "
+              >
+                Key history (every IP a key has connected from)
+              </h2>
+              <div id="sessionsHistory" class="cards"></div>
+            </div>
+          </section>
+
+          <!-- Guide -->
+          <section id="tab-guide" class="panel">
+            <div class="panel-head">
+              <h1><i class="fas fa-circle-question"></i> Guide</h1>
+            </div>
+            <div class="panel-body guide">
+              <p>
+                This is the moderation dashboard. The
+                <b>Activity</b> tab is a live, permanent record of every staff
+                action and every user identity change, so the team stays
+                accountable to each other.
+              </p>
+              <p>
+                Each card is one event. The colored left edge and icon tell you
+                the category. <span class="who dev">Developer</span> names are
+                red, <span class="who mod">moderator</span> names are orange.
+                Click any underlined name to trace that user: you will see every
+                name they have used and every action taken against them.
+              </p>
+              <p>
+                Raw IP addresses are visible to developers only. Moderators can
+                still ban or IP-block a user, since the server handles the
+                address for them, but never see it.
+              </p>
+              <p>
+                Type under any entry to leave a permanent note or ask a
+                question. All staff see comments. The <b>Ban list</b> and
+                <b>Moderators</b> tabs are developer-only.
+              </p>
+              <h2>Categories</h2>
+              <div id="legend" class="legend"></div>
+            </div>
+          </section>
+        </main>
       </div>
-
-      <div id="legend" class="ml-legend hidden"></div>
-
-      <div class="ml-toolbar">
-        <input
-          id="search"
-          class="ml-search"
-          placeholder="Search name, action, IP, room, message, comment…"
-        />
-        <div class="ml-filters">
-          <button class="ml-fbtn active" data-f="all">All</button>
-          <button class="ml-fbtn" data-f="action">Actions</button>
-          <button class="ml-fbtn" data-f="identity">Identity</button>
-        </div>
-      </div>
-
-      <div id="focusBar" class="ml-focus hidden"></div>
-      <div id="roster" class="ml-roster"></div>
-      <div id="list" class="ml-list"></div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/staff-ui.js?v=1.3.0"></script>
-    <script src="js/mod.js?v=2.2.0"></script>
+    <script src="js/mod.js?v=3.1.0"></script>
   </body>
 </html>
