@@ -1780,6 +1780,24 @@ function createUserRow(user, container) {
     });
     div.addEventListener("keydown", (e) => {
       if (handleEmoteNavigation(e)) return;
+
+      // Ctrl/Cmd + Backspace or Delete with a selection (e.g. after Ctrl+A)
+      // can leave text behind in contenteditable, so clear the selection
+      // ourselves and sync. A collapsed cursor keeps the normal word-delete.
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === "Backspace" || e.key === "Delete")
+      ) {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && !sel.isCollapsed) {
+          e.preventDefault();
+          sel.deleteFromDocument();
+          if (getPlainText(div).trim() === "") div.innerHTML = "";
+          updateSentMessage();
+          return;
+        }
+      }
+
       if (e.ctrlKey || e.metaKey) return;
       if (
         getPlainText(div).length >= MAX_MESSAGE_LENGTH &&
@@ -1940,7 +1958,49 @@ function adjustLayout() {
   }
 
   const layout = isMobile() ? "horizontal" : currentRoomLayout;
-  if (layout === "horizontal") {
+
+  // Reset styles that only the crowd grid sets, so the <=5 layouts below are
+  // never affected by a previous larger headcount.
+  container.style.flexWrap = "";
+  container.style.alignContent = "";
+  container.style.height = "";
+  container.style.overflowY = "";
+  rows.forEach((row) => (row.style.flex = ""));
+
+  if (rows.length > 5) {
+    // Crowd mode: balanced grid (columns x rows) that fills the room. Column
+    // count follows the layout preference and the available width; it only
+    // scrolls if cells would otherwise get too short. The <=5 cases are
+    // left exactly as they were.
+    container.style.flexDirection = "row";
+    container.style.flexWrap = "wrap";
+    container.style.alignContent = "flex-start";
+    const GAP = 5; // matches the .chat-container gap
+    let cw = container.clientWidth - 10; // minus left/right padding
+    const target = layout === "horizontal" ? 340 : 210;
+    const maxCols = layout === "horizontal" ? 3 : 5;
+    let cols = Math.floor((cw + GAP) / (target + GAP));
+    cols = Math.max(2, Math.min(maxCols, cols, rows.length));
+    const gridRows = Math.ceil(rows.length / cols);
+    const containerTop = container.getBoundingClientRect().top;
+    const availH = getAvailableViewportHeight() - containerTop;
+    const idealH = Math.floor((availH - (gridRows - 1) * GAP) / gridRows);
+    const cellH = Math.max(120, idealH);
+    const scroll = cellH > idealH;
+    container.style.height = `${availH}px`;
+    container.style.overflowY = scroll ? "auto" : "hidden";
+    if (scroll) cw -= 16; // leave room for the scrollbar
+    const cellW = Math.floor((cw - (cols - 1) * GAP) / cols);
+    rows.forEach((row) => {
+      row.style.flex = "0 0 auto";
+      row.style.width = `${cellW}px`;
+      row.style.height = `${cellH}px`;
+      row.style.minHeight = "0";
+      const ui = row.querySelector(".user-info");
+      const iw = row.querySelector(".chat-input-wrapper");
+      if (ui && iw) iw.style.height = `${cellH - ui.offsetHeight - 2}px`;
+    });
+  } else if (layout === "horizontal") {
     container.style.flexDirection = "column";
     const containerTop = container.getBoundingClientRect().top;
     const avail = getAvailableViewportHeight() - containerTop;
