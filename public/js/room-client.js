@@ -1609,8 +1609,10 @@ function createDevHideToggle() {
   else navRight.appendChild(button);
 }
 
-// Dev-only overlay showing per-user context (IP) in the room. Mods can act on
-// users (kick / ban / IP-block) but never see raw IP addresses.
+// Dev-only overlay showing per-user context (IP) in the room, toggleable so it
+// never has to crowd the chat. Mods can act on users (kick / ban / IP-block)
+// but never see raw IP addresses.
+let devShowIP = localStorage.getItem("talkomatic_devShowIP") !== "false";
 function renderDevContext() {
   if (!currentUserIsDev) return;
   document.querySelectorAll(".chat-row").forEach((row) => {
@@ -1620,6 +1622,7 @@ function renderDevContext() {
 
     const existing = info.querySelector(".dev-meta");
     if (existing) existing.remove();
+    if (!devShowIP) return;
 
     const meta = devContext.get(uid);
     if (meta && meta.d) {
@@ -1680,9 +1683,10 @@ function createUserRow(user, container) {
     info.appendChild(createModBadge());
   }
 
-  info.appendChild(
-    document.createTextNode(`${user.username} / ${user.location}`),
-  );
+  const nameEl = document.createElement("span");
+  nameEl.className = "ui-name";
+  nameEl.textContent = `${user.username} / ${user.location}`;
+  info.appendChild(nameEl);
 
   // Mute button
   const muteBtn = document.createElement("button");
@@ -1976,18 +1980,23 @@ function adjustLayout() {
     container.style.flexWrap = "wrap";
     container.style.alignContent = "flex-start";
     const GAP = 5; // matches the .chat-container gap
-    let cw = container.clientWidth - 10; // minus left/right padding
+    // Use the container's REAL inner box (its flex height already excludes the
+    // navbars and the invite bar below it) so the bottom row is never clipped.
+    const cs = getComputedStyle(container);
+    const hpad =
+      (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    const vpad =
+      (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    let cw = container.clientWidth - hpad;
     const target = layout === "horizontal" ? 340 : 210;
     const maxCols = layout === "horizontal" ? 3 : 5;
     let cols = Math.floor((cw + GAP) / (target + GAP));
     cols = Math.max(2, Math.min(maxCols, cols, rows.length));
     const gridRows = Math.ceil(rows.length / cols);
-    const containerTop = container.getBoundingClientRect().top;
-    const availH = getAvailableViewportHeight() - containerTop;
+    const availH = container.clientHeight - vpad;
     const idealH = Math.floor((availH - (gridRows - 1) * GAP) / gridRows);
     const cellH = Math.max(120, idealH);
     const scroll = cellH > idealH;
-    container.style.height = `${availH}px`;
     container.style.overflowY = scroll ? "auto" : "hidden";
     if (scroll) cw -= 16; // leave room for the scrollbar
     const cellW = Math.floor((cw - (cols - 1) * GAP) / cols);
@@ -2759,6 +2768,16 @@ function openStaffPanel() {
         }
       },
     });
+    appearanceItems.push({
+      icon: devShowIP ? "🌐" : "🚫",
+      label: devShowIP ? "User IPs: showing" : "User IPs: hidden",
+      desc: "Show or hide the IP tag on each user",
+      onClick: () => {
+        devShowIP = !devShowIP;
+        localStorage.setItem("talkomatic_devShowIP", devShowIP ? "true" : "false");
+        renderDevContext();
+      },
+    });
   }
   groups.push({ title: "Appearance", items: appearanceItems });
 
@@ -3105,15 +3124,19 @@ socket.on("user renamed", (data) => {
   if (!row) return;
   const info = row.querySelector(".user-info");
   if (!info) return;
+  const label = `${data.username} / ${data.location}`;
+  const nameEl = info.querySelector(".ui-name");
+  if (nameEl) {
+    nameEl.textContent = label;
+    return;
+  }
   for (const node of Array.from(info.childNodes)) {
     if (node.nodeType === Node.TEXT_NODE) {
-      node.textContent = `${data.username} / ${data.location}`;
+      node.textContent = label;
       return;
     }
   }
-  info.appendChild(
-    document.createTextNode(`${data.username} / ${data.location}`),
-  );
+  info.appendChild(document.createTextNode(label));
 });
 socket.on("room lock status", (data) => {
   currentRoomLocked = !!(data && data.locked);
@@ -3241,7 +3264,10 @@ window.addEventListener("hashchange", () => {
 // Room-specific staff styles (badges, nav button, HUD, flags, spectate banner)
 (function injectRoomStaffStyles() {
   const css = `
-    .mod-badge{display:inline-block;background:#00bcd4;color:#003;font-size:9px;font-weight:bold;padding:1px 5px;border-radius:8px;margin:0 5px 0 0;letter-spacing:.5px;vertical-align:middle;}
+    .user-info{flex-wrap:nowrap;overflow:hidden;}
+    .ui-name{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .dev-meta{flex:0 0 auto;max-width:42%;overflow:hidden;text-overflow:ellipsis;}
+    .mod-badge{display:inline-block;background:#00bcd4;color:#003;font-size:9px;font-weight:bold;padding:1px 5px;border-radius:8px;margin:0 5px 0 0;letter-spacing:.5px;vertical-align:middle;flex:0 0 auto;}
     .staff-action-button{background:none;border:none;cursor:pointer;font-size:13px;margin-left:4px;opacity:.75;}
     .staff-action-button:hover{opacity:1;}
     .staff-nav-btn{display:flex;align-items:center;gap:6px;margin-right:8px;padding:6px 12px;border:1px solid #ff9800;border-radius:6px;background:#1a1206;color:#ff9800;cursor:pointer;font-size:12px;font-weight:600;}
