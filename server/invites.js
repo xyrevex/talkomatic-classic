@@ -28,12 +28,22 @@ let store = { codes: {}, devices: {} };
 let saveTimer = null;
 let topThree = []; // deviceIds of the top inviters, for the lobby/room trophies
 
-// Recompute the top 3 inviters. Cheap; only called when a credit lands or on load.
+// Recompute the top 3 inviters for the trophy badges shown by usernames in the
+// lobby and rooms. Uses the SAME ordering as leaderboard() so the people with a
+// trophy by their name are exactly the top 3 on the board: active invites first
+// (active overrides pending), then pending, then total. Anyone who has sent at
+// least one invite can place, so the badges and the board always agree.
 function recomputeTop() {
   topThree = Object.entries(store.devices)
-    .map(([id, d]) => ({ id, c: d.credited || 0 }))
-    .filter((x) => x.c > 0)
-    .sort((a, b) => b.c - a.c)
+    .map(([id, d]) => {
+      const total = Object.keys(d.invited || {}).length;
+      const active = d.credited || 0;
+      return { id, active, pending: Math.max(0, total - active), total };
+    })
+    .filter((x) => x.total > 0)
+    .sort(
+      (a, b) => b.active - a.active || b.pending - a.pending || b.total - a.total,
+    )
     .slice(0, 3)
     .map((x) => x.id);
 }
@@ -134,6 +144,9 @@ function setReferrer(inviteeDeviceId, code, inviteeIp) {
     credited: false,
     ip: inviteeIp || null,
   };
+  // A new pending invite can change the top 3 (which now counts pending), so the
+  // username trophy badges stay in sync with the board.
+  recomputeTop();
   saveSoon();
   return { ok: true };
 }
