@@ -189,7 +189,7 @@
         font-size: 10px;
         font-weight: 800;
         padding: 3px 8px;
-        border-radius: 20px;
+
         letter-spacing: 0.5px;
       }
       .chip.dev {
@@ -332,6 +332,16 @@
       }
       .panel-body {
         padding: 16px 22px 70px;
+      }
+      .reports-note {
+        margin: 0 0 16px;
+        padding: 11px 14px;
+        background: var(--orange-soft);
+        border: 1px solid rgba(255, 152, 0, 0.3);
+        border-radius: 8px;
+        color: var(--txt);
+        font-size: 12.5px;
+        line-height: 1.55;
       }
 
       /* ── Activity toolbar ── */
@@ -656,6 +666,14 @@
         gap: 8px;
         align-items: center;
       }
+      .rc-discard {
+        color: var(--dim2);
+      }
+      .rc-discard:hover {
+        background: transparent;
+        color: var(--red);
+        border-color: var(--red);
+      }
       .pill {
         font-size: 11.5px;
         font-weight: 700;
@@ -859,7 +877,15 @@
                 <button data-f="notification" data-min2>
                   Inbox<span
                     id="notifCount"
-                    style="display:none;background:#ff5468;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;"
+                    style="
+                      display: none;
+                      background: #ff5468;
+                      color: #fff;
+                      border-radius: 8px;
+                      padding: 0 5px;
+                      font-size: 10px;
+                      margin-left: 4px;
+                    "
                   ></span>
                 </button>
               </div>
@@ -919,18 +945,16 @@
               </div>
             </div>
             <div class="panel-body">
-              <p style="color: var(--dim2); font-size: 12.5px; margin: 0 0 14px">
+              <p
+                style="color: var(--dim2); font-size: 12.5px; margin: 0 0 14px"
+              >
                 A key showing more than one IP at once, or a new IP in its
-                history, may mean the key was shared or leaked. New IP and
-                multi IP alerts also appear in Activity.
+                history, may mean the key was shared or leaked. New IP and multi
+                IP alerts also appear in Activity.
               </p>
               <div id="sessionsActive" class="cards"></div>
               <h2
-                style="
-                  font-size: 14px;
-                  margin: 26px 0 10px;
-                  color: var(--dim);
-                "
+                style="font-size: 14px; margin: 26px 0 10px; color: var(--dim)"
               >
                 Key history (every IP a key has connected from)
               </h2>
@@ -970,6 +994,11 @@
               </div>
             </div>
             <div class="panel-body">
+              <p class="reports-note">
+                A report is not proof. If a report is false, click the X to
+                discard it. If no action is needed, keep the report so the
+                history stays here and others can report this person later.
+              </p>
               <div id="reportsList" class="cards"></div>
             </div>
           </section>
@@ -1012,7 +1041,7 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="js/staff-ui.js?v=1.3.0"></script>
-    <script src="js/mod.js?v=3.3.0"></script>
+    <script src="js/staff-ui.js?v=1.3.1"></script>
+    <script src="js/mod.js?v=3.4.1"></script>
   </body>
 </html>

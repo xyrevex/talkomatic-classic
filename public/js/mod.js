@@ -49,15 +49,53 @@
 
   // ── Categories ──
   const CAT = {
-    security: { color: "#ff5468", icon: "fa-user-secret", label: "Security: a staff key used from a new IP, or from several IPs at once" },
-    destructive: { color: "#ff5468", icon: "fa-triangle-exclamation", label: "Destructive: kick, ban, IP block, close, nuke, freeze, wipe" },
-    moderation: { color: "#ffb454", icon: "fa-gavel", label: "Moderation: warn, rename, lock, slow, clear board" },
-    broadcast: { color: "#5aa9ff", icon: "fa-bullhorn", label: "Broadcast: megaphone, ticker, spotlight, party" },
-    config: { color: "#c08bff", icon: "fa-sliders", label: "Config and roles: flags, room size, maintenance, grant or revoke" },
-    signin: { color: "#57d9a3", icon: "fa-right-to-bracket", label: "Identity: a user signed in" },
-    namechange: { color: "#ffb454", icon: "fa-user-pen", label: "Identity: a name changed or was reset" },
-    notification: { color: "#ff9800", icon: "fa-bell", label: "Inbox: reports, applications, and possible mod-abuse flags (full mods + devs)" },
-    other: { color: "#6b7080", icon: "fa-circle-info", label: "Other: spectate, staff login" },
+    security: {
+      color: "#ff5468",
+      icon: "fa-user-secret",
+      label:
+        "Security: a staff key used from a new IP, or from several IPs at once",
+    },
+    destructive: {
+      color: "#ff5468",
+      icon: "fa-triangle-exclamation",
+      label: "Destructive: kick, ban, IP block, close, nuke, freeze, wipe",
+    },
+    moderation: {
+      color: "#ffb454",
+      icon: "fa-gavel",
+      label: "Moderation: warn, rename, lock, slow, clear board",
+    },
+    broadcast: {
+      color: "#5aa9ff",
+      icon: "fa-bullhorn",
+      label: "Broadcast: megaphone, ticker, spotlight, party",
+    },
+    config: {
+      color: "#c08bff",
+      icon: "fa-sliders",
+      label: "Config and roles: flags, room size, maintenance, grant or revoke",
+    },
+    signin: {
+      color: "#57d9a3",
+      icon: "fa-right-to-bracket",
+      label: "Identity: a user signed in",
+    },
+    namechange: {
+      color: "#ffb454",
+      icon: "fa-user-pen",
+      label: "Identity: a name changed or was reset",
+    },
+    notification: {
+      color: "#ff9800",
+      icon: "fa-bell",
+      label:
+        "Inbox: reports, applications, and possible mod-abuse flags (full mods + devs)",
+    },
+    other: {
+      color: "#6b7080",
+      icon: "fa-circle-info",
+      label: "Other: spectate, staff login",
+    },
   };
 
   function categorize(e) {
@@ -66,10 +104,15 @@
     if (e.type === "identity")
       return e.event === "signin" ? "signin" : "namechange";
     const a = (e.action || "").toLowerCase();
-    if (/kick|ban|ip block|close room|nuke|freeze|wipe/.test(a)) return "destructive";
+    if (/kick|ban|ip block|close room|nuke|freeze|wipe/.test(a))
+      return "destructive";
     if (/warn|rename|lock|slow mode|clear board/.test(a)) return "moderation";
     if (/megaphone|ticker|spotlight|party/.test(a)) return "broadcast";
-    if (/flag|maintenance|grant mod|revoke mod|blacklist|unblock|room size|make mod/.test(a))
+    if (
+      /flag|maintenance|grant mod|revoke mod|blacklist|unblock|room size|make mod/.test(
+        a,
+      )
+    )
       return "config";
     return "other";
   }
@@ -94,7 +137,11 @@
     return i;
   }
   function initialOf(name) {
-    return (String(name || "?").trim().charAt(0) || "?").toUpperCase();
+    return (
+      String(name || "?")
+        .trim()
+        .charAt(0) || "?"
+    ).toUpperCase();
   }
   function parseTarget(target) {
     const m = /^user:(.*)\(([^)]*)\)$/.exec(target || "");
@@ -115,15 +162,33 @@
   function metaBit(parent, k, v, vClass, uid) {
     if (v == null || v === "") return;
     parent.appendChild(span("k", k + " "));
-    parent.appendChild(uid ? uref(String(v), uid) : span(vClass || null, String(v)));
+    parent.appendChild(
+      uid ? uref(String(v), uid) : span(vClass || null, String(v)),
+    );
     parent.appendChild(document.createTextNode("   "));
   }
   function searchable(e) {
     const base = [
-      e.role, e.label, e.action, e.event, e.target, e.room, e.ip, e.details,
-      e.username, e.prevUsername, e.userId, e.by,
-    ].filter(Boolean).join(" ").toLowerCase();
-    const cmts = (commentsByRef.get(e.id) || []).map((c) => c.text).join(" ").toLowerCase();
+      e.role,
+      e.label,
+      e.action,
+      e.event,
+      e.target,
+      e.room,
+      e.ip,
+      e.details,
+      e.username,
+      e.prevUsername,
+      e.userId,
+      e.by,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const cmts = (commentsByRef.get(e.id) || [])
+      .map((c) => c.text)
+      .join(" ")
+      .toLowerCase();
     return base + " " + cmts;
   }
   function matchesFocus(e, uid) {
@@ -153,7 +218,9 @@
     row1.appendChild(icon(CAT[cat].icon, "cat-ic"));
     if (e.type === "security") {
       row1.appendChild(span("chip dev", "ALERT"));
-      row1.appendChild(span("who " + (e.role === "dev" ? "dev" : "mod"), e.label || "?"));
+      row1.appendChild(
+        span("who " + (e.role === "dev" ? "dev" : "mod"), e.label || "?"),
+      );
       row1.appendChild(
         span(
           "act",
@@ -163,8 +230,15 @@
         ),
       );
     } else if (e.type === "action") {
-      row1.appendChild(span("chip " + (e.role === "dev" ? "dev" : "mod"), (e.role || "?").toUpperCase()));
-      row1.appendChild(span("who " + (e.role === "dev" ? "dev" : "mod"), e.label || "?"));
+      row1.appendChild(
+        span(
+          "chip " + (e.role === "dev" ? "dev" : "mod"),
+          (e.role || "?").toUpperCase(),
+        ),
+      );
+      row1.appendChild(
+        span("who " + (e.role === "dev" ? "dev" : "mod"), e.label || "?"),
+      );
       row1.appendChild(span("act", e.action || "?"));
     } else if (e.type === "notification") {
       row1.appendChild(span("chip mod", (e.kind || "notice").toUpperCase()));
@@ -183,8 +257,12 @@
       );
     } else {
       row1.appendChild(uref(e.username || "?", e.userId));
-      const evt = e.event === "rename" ? "changed name"
-        : e.event === "forced-rename" ? "force-renamed by staff" : "signed in";
+      const evt =
+        e.event === "rename"
+          ? "changed name"
+          : e.event === "forced-rename"
+            ? "force-renamed by staff"
+            : "signed in";
       row1.appendChild(span("act", evt));
     }
     row1.appendChild(span("when", fmtTime(e.ts)));
@@ -272,7 +350,12 @@
     thread.style.display = "block";
     const row = document.createElement("div");
     row.className = "cmt";
-    row.appendChild(span("cwho " + (c.role === "dev" ? "dev" : "mod"), (c.label || "?") + ":"));
+    row.appendChild(
+      span(
+        "cwho " + (c.role === "dev" ? "dev" : "mod"),
+        (c.label || "?") + ":",
+      ),
+    );
     row.appendChild(span("ctext", c.text));
     row.appendChild(span("cwhen", fmtTime(c.ts)));
     thread.appendChild(row);
@@ -293,7 +376,8 @@
       return;
     }
     const shown = matches.slice(-DOM_CAP);
-    for (let i = shown.length - 1; i >= 0; i--) listEl.appendChild(buildCard(shown[i]));
+    for (let i = shown.length - 1; i >= 0; i--)
+      listEl.appendChild(buildCard(shown[i]));
     updateFeedNote(matches.length);
   }
 
@@ -301,7 +385,11 @@
     if (total > DOM_CAP) {
       feedNote.classList.remove("hidden");
       feedNote.textContent =
-        "Showing the latest " + DOM_CAP + " of " + total + " matching entries. Use search to narrow down.";
+        "Showing the latest " +
+        DOM_CAP +
+        " of " +
+        total +
+        " matching entries. Use search to narrow down.";
     } else {
       feedNote.classList.add("hidden");
     }
@@ -333,7 +421,9 @@
     // Trim oldest cards beyond the cap
     let cards = listEl.querySelectorAll(".entry");
     for (let i = cards.length - 1; i >= DOM_CAP; i--) cards[i].remove();
-    const totalMatches = entries.filter((e) => e.type !== "comment" && passes(e)).length;
+    const totalMatches = entries.filter(
+      (e) => e.type !== "comment" && passes(e),
+    ).length;
     updateFeedNote(totalMatches);
   }
 
@@ -376,7 +466,8 @@
     return b;
   }
   function userSummary(uid) {
-    const names = new Set(), ips = new Set();
+    const names = new Set(),
+      ips = new Set();
     let actionsAgainst = 0;
     for (const e of entries) {
       if (e.type === "identity" && e.userId === uid) {
@@ -398,12 +489,16 @@
     d.textContent = "Devs: ";
     d.style.color = "var(--red)";
     rosterEl.appendChild(d);
-    rosterEl.appendChild(document.createTextNode((roster.devs || []).join(", ") || "none"));
+    rosterEl.appendChild(
+      document.createTextNode((roster.devs || []).join(", ") || "none"),
+    );
     const m = document.createElement("b");
     m.textContent = "      Mods: ";
     m.style.color = "var(--orange)";
     rosterEl.appendChild(m);
-    rosterEl.appendChild(document.createTextNode((roster.mods || []).join(", ") || "none"));
+    rosterEl.appendChild(
+      document.createTextNode((roster.mods || []).join(", ") || "none"),
+    );
   }
 
   function renderLegend() {
@@ -430,9 +525,12 @@
     const ms = (b.expiry || 0) - Date.now();
     if (ms <= 0) return "expiring";
     let s = Math.floor(ms / 1000);
-    const d = Math.floor(s / 86400); s -= d * 86400;
-    const h = Math.floor(s / 3600); s -= h * 3600;
-    const m = Math.floor(s / 60); s -= m * 60;
+    const d = Math.floor(s / 86400);
+    s -= d * 86400;
+    const h = Math.floor(s / 3600);
+    s -= h * 3600;
+    const m = Math.floor(s / 60);
+    s -= m * 60;
     const pad = (n) => String(n).padStart(2, "0");
     if (d > 0) return d + "d " + pad(h) + ":" + pad(m) + ":" + pad(s) + " left";
     return pad(h) + ":" + pad(m) + ":" + pad(s) + " left";
@@ -449,7 +547,9 @@
       const empty = document.createElement("div");
       empty.className = "empty";
       empty.appendChild(icon("fa-circle-check"));
-      empty.appendChild(document.createTextNode("Nobody is currently blocked."));
+      empty.appendChild(
+        document.createTextNode("Nobody is currently blocked."),
+      );
       wrap.appendChild(empty);
       return;
     }
@@ -484,7 +584,9 @@
       const pill = document.createElement("span");
       pill.className = "pill " + (b.permanent ? "perm" : "live");
       pill.dataset.ttl = "1";
-      pill.textContent = b.permanent ? "Permanent" : (fmtRemaining(b) || "expiring");
+      pill.textContent = b.permanent
+        ? "Permanent"
+        : fmtRemaining(b) || "expiring";
       actions.appendChild(pill);
       const unban = document.createElement("button");
       unban.className = "btn sm danger";
@@ -497,7 +599,8 @@
         }
         const ok = await StaffUI.confirm({
           title: "Unban",
-          message: "Unblock " + (b.label ? b.label + " (" + b.ip + ")" : b.ip) + "?",
+          message:
+            "Unblock " + (b.label ? b.label + " (" + b.ip + ")" : b.ip) + "?",
           confirmText: "Unban",
         });
         if (ok) socket.emit("dev unblock ip", { ip: b.ip });
@@ -514,7 +617,7 @@
     bansTimer = setInterval(() => {
       if (tab !== "bans") return;
       let anyLive = false;
-      document.querySelectorAll('#bansList .pill[data-ttl]').forEach((pill) => {
+      document.querySelectorAll("#bansList .pill[data-ttl]").forEach((pill) => {
         const ip = pill.closest(".rowcard")?.dataset.ip;
         const b = bans.find((x) => x.ip === ip);
         if (!b || b.permanent) return;
@@ -541,7 +644,9 @@
       const empty = document.createElement("div");
       empty.className = "empty";
       empty.appendChild(icon("fa-user-shield"));
-      empty.appendChild(document.createTextNode("No moderators yet. Grant one above."));
+      empty.appendChild(
+        document.createTextNode("No moderators yet. Grant one above."),
+      );
       wrap.appendChild(empty);
       return;
     }
@@ -561,7 +666,10 @@
       title.appendChild(document.createTextNode(k.label || "mod"));
       title.appendChild(span("chip mod", k.level === 1 ? "MOD L1" : "MOD L2"));
       main.appendChild(title);
-      const sub = span("rc-sub mono", "key " + (k.hash ? k.hash.slice(0, 12) : "?"));
+      const sub = span(
+        "rc-sub mono",
+        "key " + (k.hash ? k.hash.slice(0, 12) : "?"),
+      );
       main.appendChild(sub);
       row.appendChild(main);
 
@@ -572,7 +680,9 @@
       const toLevel = k.level === 1 ? 2 : 1;
       const levelBtn = document.createElement("button");
       levelBtn.className = "btn sm";
-      levelBtn.appendChild(icon(toLevel === 2 ? "fa-arrow-up" : "fa-arrow-down"));
+      levelBtn.appendChild(
+        icon(toLevel === 2 ? "fa-arrow-up" : "fa-arrow-down"),
+      );
       levelBtn.appendChild(
         document.createTextNode(
           toLevel === 2 ? " Promote to L2" : " Demote to L1",
@@ -609,7 +719,10 @@
         }
         const ok = await StaffUI.confirm({
           title: "Revoke mod",
-          message: 'Revoke "' + (k.label || "mod") + '" immediately? Their access is removed at once.',
+          message:
+            'Revoke "' +
+            (k.label || "mod") +
+            '" immediately? Their access is removed at once.',
           danger: true,
           confirmText: "Revoke",
         });
@@ -672,6 +785,13 @@
     }).then((ok) => {
       if (ok) go();
     });
+  }
+  // Discard a report: tell the server to clear it, then drop it locally right
+  // away so the card disappears without waiting for the round trip.
+  function dismissReport(r) {
+    socket.emit("staff dismiss report", { targetUserId: r.targetUserId });
+    reportsList = reportsList.filter((x) => x.targetUserId !== r.targetUserId);
+    renderReports();
   }
   function renderReports() {
     const wrap = $("reportsList");
@@ -741,30 +861,41 @@
       });
       row.appendChild(main);
 
+      const actions = document.createElement("div");
+      actions.className = "rc-actions";
+      const mkBtn = (label, danger, fn) => {
+        const b = document.createElement("button");
+        b.className = "btn sm" + (danger ? " danger" : "");
+        b.textContent = label;
+        b.addEventListener("click", fn);
+        return b;
+      };
       if (r.online) {
-        const actions = document.createElement("div");
-        actions.className = "rc-actions";
-        const mkBtn = (label, danger, fn) => {
-          const b = document.createElement("button");
-          b.className = "btn sm" + (danger ? " danger" : "");
-          b.textContent = label;
-          b.addEventListener("click", fn);
-          return b;
-        };
         actions.appendChild(
           mkBtn("Kick", false, () =>
             socket.emit("staff kick", { targetUserId: r.targetUserId }),
           ),
         );
         actions.appendChild(mkBtn("Ban 1h", true, () => banReported(r, "1h")));
-        actions.appendChild(mkBtn("Ban 24h", true, () => banReported(r, "24h")));
+        actions.appendChild(
+          mkBtn("Ban 24h", true, () => banReported(r, "24h")),
+        );
         actions.appendChild(mkBtn("Ban 7d", true, () => banReported(r, "7d")));
         if (isDev)
           actions.appendChild(
             mkBtn("Ban perm", true, () => banReported(r, "permanent")),
           );
-        row.appendChild(actions);
       }
+      // Discard (X): clear a false or already-handled report. Always available,
+      // online or offline. Real reports should be kept so the history builds up.
+      const discard = document.createElement("button");
+      discard.className = "btn sm rc-discard";
+      discard.title = "Discard report";
+      discard.setAttribute("aria-label", "Discard report");
+      discard.appendChild(icon("fa-xmark"));
+      discard.addEventListener("click", () => dismissReport(r));
+      actions.appendChild(discard);
+      row.appendChild(actions);
       wrap.appendChild(row);
     });
   }
@@ -901,7 +1032,12 @@
     main.className = "rc-main";
     const title = span("rc-title", "");
     title.appendChild(document.createTextNode(label || "?"));
-    title.appendChild(span("chip " + (role === "dev" ? "dev" : "mod"), (role || "?").toUpperCase()));
+    title.appendChild(
+      span(
+        "chip " + (role === "dev" ? "dev" : "mod"),
+        (role || "?").toUpperCase(),
+      ),
+    );
     main.appendChild(title);
     const sub = span("rc-sub", "");
     if (sub2) sub.appendChild(document.createTextNode(sub2 + " "));
@@ -932,18 +1068,36 @@
     const flagged = sessions.filter((s) => s.multiIp).length;
     $("sessionsBadge").textContent = String(sessions.length);
     $("sessionsSub").textContent = sessions.length
-      ? sessions.length + " key" + (sessions.length === 1 ? "" : "s") + " connected" + (flagged ? ", " + flagged + " from multiple IPs" : "")
+      ? sessions.length +
+        " key" +
+        (sessions.length === 1 ? "" : "s") +
+        " connected" +
+        (flagged ? ", " + flagged + " from multiple IPs" : "")
       : "No staff connected right now";
 
     active.textContent = "";
     if (sessions.length === 0) {
-      emptyCard(active, "fa-plug-circle-xmark", "No staff are connected right now.");
+      emptyCard(
+        active,
+        "fa-plug-circle-xmark",
+        "No staff are connected right now.",
+      );
     } else {
       sessions.forEach((s) => {
-        const tabs = (s.sessionCount || 1) + " tab" + ((s.sessionCount || 1) === 1 ? "" : "s") + " from";
+        const tabs =
+          (s.sessionCount || 1) +
+          " tab" +
+          ((s.sessionCount || 1) === 1 ? "" : "s") +
+          " from";
         active.appendChild(
-          keyRow(s.label, s.role, (s.ips || []).join(", "),
-            s.multiIp ? "perm" : "live", s.multiIp ? "Multiple IPs" : "OK", tabs),
+          keyRow(
+            s.label,
+            s.role,
+            (s.ips || []).join(", "),
+            s.multiIp ? "perm" : "live",
+            s.multiIp ? "Multiple IPs" : "OK",
+            tabs,
+          ),
         );
       });
     }
@@ -955,10 +1109,14 @@
       history.forEach((h) => {
         const ips = h.ips || [];
         hist.appendChild(
-          keyRow(h.label, h.role, ips.map((x) => x.ip).join(", "),
+          keyRow(
+            h.label,
+            h.role,
+            ips.map((x) => x.ip).join(", "),
             ips.length > 1 ? "perm" : "live",
             ips.length + " IP" + (ips.length === 1 ? "" : "s"),
-            "seen from"),
+            "seen from",
+          ),
         );
       });
     }
@@ -967,10 +1125,12 @@
   // ── Tabs + sidebar ──
   function switchTab(name) {
     tab = name;
-    document.querySelectorAll(".nav-item").forEach((n) =>
-      n.classList.toggle("active", n.dataset.tab === name),
-    );
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    document
+      .querySelectorAll(".nav-item")
+      .forEach((n) => n.classList.toggle("active", n.dataset.tab === name));
+    document
+      .querySelectorAll(".panel")
+      .forEach((p) => p.classList.remove("active"));
     const panel = $("tab-" + name);
     if (panel) panel.classList.add("active");
     if (name === "activity") flushPending();
@@ -1031,7 +1191,12 @@
     me = data && data.me;
     if (me) {
       meEl.textContent = "";
-      meEl.appendChild(span("chip " + (me.role === "dev" ? "dev" : "mod"), (me.role || "staff").toUpperCase()));
+      meEl.appendChild(
+        span(
+          "chip " + (me.role === "dev" ? "dev" : "mod"),
+          (me.role || "staff").toUpperCase(),
+        ),
+      );
       meEl.appendChild(document.createTextNode(" " + (me.label || "")));
     }
     applyRoleGating();
@@ -1115,7 +1280,8 @@
       '". Copy it now: it is shown once and never stored.';
     const code = document.createElement("div");
     code.className = "mono";
-    code.style.cssText = "background:#000;border:1px solid #333;padding:10px;margin:10px 0;word-break:break-all;border-radius:6px;color:#ff9800;";
+    code.style.cssText =
+      "background:#000;border:1px solid #333;padding:10px;margin:10px 0;word-break:break-all;border-radius:6px;color:#ff9800;";
     code.textContent = d.key;
     w.appendChild(p1);
     w.appendChild(code);
@@ -1124,14 +1290,25 @@
       icon: '<i class="fas fa-key"></i>',
       body: w,
       actions: [
-        { label: "Copy key", kind: "primary", onClick: () => { try { navigator.clipboard.writeText(d.key); } catch (_) {} } },
+        {
+          label: "Copy key",
+          kind: "primary",
+          onClick: () => {
+            try {
+              navigator.clipboard.writeText(d.key);
+            } catch (_) {}
+          },
+        },
         { label: "Done", onClick: () => {} },
       ],
     });
   });
 
   socket.on("staff action result", (d) => {
-    if (d && window.StaffUI) StaffUI.toast((d.ok ? "Done: " : "Failed: ") + (d.action || ""), { type: d.ok ? "success" : "error" });
+    if (d && window.StaffUI)
+      StaffUI.toast((d.ok ? "Done: " : "Failed: ") + (d.action || ""), {
+        type: d.ok ? "success" : "error",
+      });
   });
 
   const showDenied = () => {
@@ -1153,7 +1330,15 @@
       icon: '<i class="fas fa-key"></i>',
       subtitle: "Enter your dev or mod key",
       message: "Verified on the server, then saved to this browser.",
-      fields: [{ name: "value", label: "Staff key", type: "password", placeholder: "paste your key", required: true }],
+      fields: [
+        {
+          name: "value",
+          label: "Staff key",
+          type: "password",
+          placeholder: "paste your key",
+          required: true,
+        },
+      ],
       confirmText: "Unlock",
     });
     if (key) {
@@ -1164,26 +1349,44 @@
   socket.on("staff key result", (d) => {
     if (!d || !d.role) {
       if (window.StaffUI)
-        StaffUI.toast(d && d.throttled ? "Too many attempts. Wait a few minutes." : "That key was not recognized.", { type: "error" });
+        StaffUI.toast(
+          d && d.throttled
+            ? "Too many attempts. Wait a few minutes."
+            : "That key was not recognized.",
+          { type: "error" },
+        );
       pendingStaffKey = null;
       return;
     }
-    if (d.role === "dev") localStorage.setItem("talkomatic_devKey", pendingStaffKey);
+    if (d.role === "dev")
+      localStorage.setItem("talkomatic_devKey", pendingStaffKey);
     else localStorage.setItem("talkomatic_modKey", pendingStaffKey);
     pendingStaffKey = null;
-    if (window.StaffUI) StaffUI.toast("Key accepted. Reloading.", { type: "success" });
+    if (window.StaffUI)
+      StaffUI.toast("Key accepted. Reloading.", { type: "success" });
     setTimeout(() => window.location.reload(), 1000);
   });
 
   // ── Controls ──
-  $("enterKeyBtn") && $("enterKeyBtn").addEventListener("click", openStaffKeyEntry);
-  $("navToggle").addEventListener("click", () => document.body.classList.toggle("nav-closed"));
-  $("navBackdrop").addEventListener("click", () => document.body.classList.add("nav-closed"));
-  document.querySelectorAll(".nav-item").forEach((n) =>
-    n.addEventListener("click", () => switchTab(n.dataset.tab)),
+  $("enterKeyBtn") &&
+    $("enterKeyBtn").addEventListener("click", openStaffKeyEntry);
+  $("navToggle").addEventListener("click", () =>
+    document.body.classList.toggle("nav-closed"),
   );
-  $("bansRefresh").addEventListener("click", () => socket.emit("dev list blocks"));
-  $("modsRefresh").addEventListener("click", () => socket.emit("dev list mod keys"));
+  $("navBackdrop").addEventListener("click", () =>
+    document.body.classList.add("nav-closed"),
+  );
+  document
+    .querySelectorAll(".nav-item")
+    .forEach((n) =>
+      n.addEventListener("click", () => switchTab(n.dataset.tab)),
+    );
+  $("bansRefresh").addEventListener("click", () =>
+    socket.emit("dev list blocks"),
+  );
+  $("modsRefresh").addEventListener("click", () =>
+    socket.emit("dev list mod keys"),
+  );
   $("sessionsRefresh") &&
     $("sessionsRefresh").addEventListener("click", () =>
       socket.emit("dev get sessions"),
@@ -1208,7 +1411,9 @@
   });
   document.querySelectorAll("#filterSeg button").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll("#filterSeg button").forEach((b) => b.classList.remove("active"));
+      document
+        .querySelectorAll("#filterSeg button")
+        .forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       feedFilter = btn.dataset.f;
       if (feedFilter === "notification") {

@@ -12,7 +12,7 @@
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     />
-    <link rel="stylesheet" href="stylesheets/room.css?v=2.3.0" />
+    <link rel="stylesheet" href="stylesheets/room.css?v=2.4.0" />
     <link rel="icon" type="image/png" href="images/icons/favicon.png" />
     <style>
       /* Emote system */
@@ -461,7 +461,16 @@
         <div class="room-id">*</div>
       </div>
       <div class="chat-container"></div>
-      <div class="invite-section">
+      <div class="invite-section" id="inviteSection">
+        <button
+          id="toggleInvite"
+          class="invite-toggle"
+          aria-label="Hide invite link"
+          aria-expanded="true"
+          title="Hide invite link"
+        >
+          <i class="fas fa-chevron-down"></i>
+        </button>
         <div class="invite-text">
           Invite friends to your room with this link:
         </div>
@@ -532,15 +541,15 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <!-- Shared staff UI kit (modals, menus, toasts) -->
-    <script src="js/staff-ui.js?v=1.4.0"></script>
-    <script src="js/word-filter-client.js?v=2.1.0"></script>
-    <script src="js/identity.js?v=1.0.0"></script>
-    <script src="js/room-client.js?v=3.8.0"></script>
-    <script src="js/talkoboard.js?v=1.4.0"></script>
+    <script src="js/staff-ui.js?v=1.4.1"></script>
+    <script src="js/word-filter-client.js?v=2.1.1"></script>
+    <script src="js/identity.js?v=1.0.1"></script>
+    <script src="js/room-client.js?v=3.9.1"></script>
+    <script src="js/talkoboard.js?v=1.4.1"></script>
 
-    <script src="js/games-client.js?v=1.0.3"></script>
+    <script src="js/games-client.js?v=1.0.4"></script>
 
     <!-- Feature announcement logic -->
-    <script src="js/feature-announce.js?v=1.0.1"></script>
+    <script src="js/feature-announce.js?v=1.0.2"></script>
   </body>
 </html>

@@ -61,6 +61,11 @@ function forTarget(targetKey) {
   return (byTarget.get(targetKey) || []).slice();
 }
 
+// Drop every report against one target (staff discarded it as false/handled).
+function clear(targetKey) {
+  return byTarget.delete(targetKey);
+}
+
 // Compact per-target summary, most-reported first (for a dashboard view).
 function summary() {
   const out = [];
@@ -79,4 +84,4 @@ function summary() {
   return out.sort((a, b) => b.distinct - a.distinct || b.total - a.total);
 }
 
-module.exports = { add, forTarget, summary };
+module.exports = { add, forTarget, summary, clear };

@@ -2533,6 +2533,31 @@ window.addEventListener("load", () => {
     .getElementById("copyInviteLink")
     .addEventListener("click", copyInviteLink);
 
+  // Invite section collapse toggle (chevron tab at the top-right of the bar).
+  // Collapsing hands the freed vertical space back to the chat area.
+  const inviteToggle = document.getElementById("toggleInvite");
+  const inviteSection = document.getElementById("inviteSection");
+  if (inviteToggle && inviteSection) {
+    const setInviteCollapsed = (collapsed) => {
+      inviteSection.classList.toggle("collapsed", collapsed);
+      const ic = inviteToggle.querySelector("i");
+      if (ic)
+        ic.className = collapsed ? "fas fa-chevron-up" : "fas fa-chevron-down";
+      inviteToggle.setAttribute("aria-expanded", String(!collapsed));
+      const label = collapsed ? "Show invite link" : "Hide invite link";
+      inviteToggle.setAttribute("aria-label", label);
+      inviteToggle.title = label;
+      adjustLayout();
+    };
+    if (localStorage.getItem("inviteCollapsed") === "1")
+      setInviteCollapsed(true);
+    inviteToggle.addEventListener("click", () => {
+      const collapsed = !inviteSection.classList.contains("collapsed");
+      setInviteCollapsed(collapsed);
+      localStorage.setItem("inviteCollapsed", collapsed ? "1" : "0");
+    });
+  }
+
   // Sound
   const savedMute = localStorage.getItem("soundEnabled");
   if (savedMute !== null) {

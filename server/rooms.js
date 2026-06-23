@@ -458,6 +458,44 @@ function logStaff(socket, action, target, room, details) {
     });
 }
 
+// Build the reports board payload (shared by the get + dismiss handlers): one
+// row per reported user, with the live name/room resolved when they are online.
+function buildReportsList() {
+  return reports.summary().map((s) => {
+    const targets = findSocketsByUserId(s.targetKey);
+    const online = targets.length > 0;
+    let name = s.name;
+    let roomName = null;
+    if (online) {
+      const rid = getUserCurrentRoom(s.targetKey);
+      const room = rid ? state.rooms.get(rid) : null;
+      const u = room?.users.find((x) => x.id === s.targetKey);
+      name =
+        (u && u.username) || targets[0].handshake?.session?.username || name;
+      roomName = room?.name || null;
+    }
+    return {
+      targetUserId: s.targetKey,
+      name: name || "(unknown user)",
+      total: s.total,
+      distinct: s.distinct,
+      categories: s.categories,
+      online,
+      roomName,
+      reasons: reports
+        .forTarget(s.targetKey)
+        .slice(-8)
+        .reverse()
+        .map((r) => ({
+          category: r.category,
+          reason: r.reason,
+          by: r.byName,
+          at: r.at,
+        })),
+    };
+  });
+}
+
 // Send the mod-application list to one staff socket (the IP is dev-only).
 function sendAppsList(s) {
   if (!s) return;
@@ -3999,42 +4037,28 @@ function registerSocketHandlers() {
       "staff get reports",
       safe(async () => {
         if (!requireModLevel(socket, 2)) return;
-        const items = reports.summary().map((s) => {
-          const targets = findSocketsByUserId(s.targetKey);
-          const online = targets.length > 0;
-          let name = s.name;
-          let roomName = null;
-          if (online) {
-            const rid = getUserCurrentRoom(s.targetKey);
-            const room = rid ? state.rooms.get(rid) : null;
-            const u = room?.users.find((x) => x.id === s.targetKey);
-            name =
-              (u && u.username) ||
-              targets[0].handshake?.session?.username ||
-              name;
-            roomName = room?.name || null;
-          }
-          return {
-            targetUserId: s.targetKey,
-            name: name || "(unknown user)",
-            total: s.total,
-            distinct: s.distinct,
-            categories: s.categories,
-            online,
-            roomName,
-            reasons: reports
-              .forTarget(s.targetKey)
-              .slice(-8)
-              .reverse()
-              .map((r) => ({
-                category: r.category,
-                reason: r.reason,
-                by: r.byName,
-                at: r.at,
-              })),
-          };
-        });
-        socket.emit("staff reports", items);
+        socket.emit("staff reports", buildReportsList());
+      }),
+    );
+
+    // ── Dismiss a report (full mods + devs): clear a false / handled report ─
+    socket.on(
+      "staff dismiss report",
+      safe(async (data) => {
+        if (!requireModLevel(socket, 2)) return;
+        const targetUserId = data?.targetUserId;
+        if (!targetUserId || typeof targetUserId !== "string") return;
+        const before = reports
+          .summary()
+          .find((s) => s.targetKey === targetUserId);
+        reports.clear(targetUserId);
+        logStaff(
+          socket,
+          "dismiss report",
+          { name: before?.name || "?", id: targetUserId },
+          "-",
+        );
+        socket.emit("staff reports", buildReportsList());
       }),
     );
 
