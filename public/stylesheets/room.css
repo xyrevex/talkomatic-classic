@@ -1654,8 +1654,8 @@ html {
 .mpp-overlay {
   /* ====================== SIZE ====================== */
   --mpp-modal-gap: 0px; /* gap from the top & bottom of the screen */
-  --mpp-keyboard-max-width: 1900px; /* how wide the keyboard can get (-> key width) */
-  --mpp-keyboard-height: 400px; /* white-key height on desktop */
+  --mpp-keyboard-max-width: 1800px; /* how wide the keyboard can get (-> key width) */
+  --mpp-keyboard-height: 350px; /* white-key height on desktop */
   --mpp-row-gap: 12px; /* gap between stacked rows on phones */
   --mpp-black-key-height: 0.62; /* black-key height, fraction of a white key */
   --mpp-black-key-width: 0.72; /* black-key width,  fraction of a white key */
@@ -1739,7 +1739,7 @@ html {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--mpp-accent);
+  color: white;
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.2px;
@@ -1784,9 +1784,10 @@ html {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--mpp-surface-2);
-  border: 1px solid var(--mpp-border);
-  color: var(--mpp-text);
+  background: #000000;
+
+  border: 1px solid white;
+  color: white;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -1797,9 +1798,9 @@ html {
   transition: all 0.15s ease;
 }
 .mpp-hbtn:hover {
-  background: var(--mpp-surface-3);
-  border-color: rgba(255, 152, 0, 0.5);
-  color: #fff;
+  background: rgb(28, 28, 28);
+  border-color: rgba(183, 183, 183, 0.5);
+  color: #d9d9d9;
 }
 .mpp-hbtn.mpp-icon-only {
   width: 36px;
@@ -1850,7 +1851,8 @@ html {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  padding: 20px;
+  /* Bottom space reserved for the chat so the keyboard never sits under it. */
+  padding: 20px 20px 210px;
   pointer-events: none;
 }
 .mpp-center > * {
@@ -1870,13 +1872,12 @@ html {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--mpp-border);
+  border: 1px solid white;
   border-radius: 10px;
   padding: 5px 8px;
 }
 .mpp-tlabel {
-  color: var(--mpp-text-dim);
+  color: white;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -1887,9 +1888,9 @@ html {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--mpp-surface-2);
-  border: 1px solid transparent;
-  color: var(--mpp-text);
+  background: #000000;
+  border: 1px solid white;
+  color: white;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -1901,7 +1902,7 @@ html {
   transition: all 0.14s ease;
 }
 .mpp-tbtn:hover {
-  background: var(--mpp-surface-3);
+  background: #2d2d2d;
   color: #fff;
 }
 .mpp-tbtn.on,
@@ -1936,10 +1937,14 @@ html {
   width: 100%;
   max-width: var(--mpp-keyboard-max-width);
   height: var(--mpp-keyboard-height);
+  /* Shrink to fit instead of overflowing on short windows. */
+  max-height: 100%;
+  min-height: 0;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--mpp-row-gap);
+  z-index: 999999;
 }
 .mpp-row {
   position: relative;
@@ -2041,7 +2046,7 @@ html {
   inset: 0;
   border-radius: 0 0 var(--mpp-white-radius) var(--mpp-white-radius);
   background: var(--press, var(--mpp-accent));
-  opacity: 0.4;
+  opacity: 0.62;
   pointer-events: none;
 }
 .mpp-black.pressed {
@@ -2060,6 +2065,19 @@ html {
   opacity: 0.55;
   mix-blend-mode: screen;
   pointer-events: none;
+}
+/* The note color deepens the longer a key is held down. Pure CSS, so it costs
+   nothing even when the whole room is hammering keys. */
+@keyframes mpp-hold {
+  0% {
+    filter: brightness(1.3) saturate(1.05);
+  }
+  100% {
+    filter: brightness(0.48) saturate(1.45);
+  }
+}
+.mpp-key.pressed::after {
+  animation: mpp-hold 5s ease-out forwards;
 }
 
 .mpp-keyboard-wrap.locked {
@@ -2161,29 +2179,43 @@ html {
   position: absolute;
   left: 0;
   bottom: 0;
-  width: min(40%, 380px);
-  height: 98%;
+  width: min(42%, 600px);
+  height: 800px; /* a bottom-left band; the keyboard is kept above it */
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   padding: 0 0 14px 16px;
   z-index: 4;
-  pointer-events: none;
+  pointer-events: none; /* empty area passes clicks through to nothing behind */
 }
 .mpp-chat-log {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   gap: 6px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-bottom: 6px;
+  /* scrollable + selectable; sits below the keys so it never blocks playing */
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
   -webkit-mask-image: linear-gradient(
     to top,
     #000 0%,
-    #000 42%,
-    transparent 96%
+    #000 72%,
+    transparent 100%
   );
-  mask-image: linear-gradient(to top, #000 0%, #000 42%, transparent 96%);
+  mask-image: linear-gradient(to top, #000 0%, #000 72%, transparent 100%);
+}
+.mpp-chat-log::-webkit-scrollbar {
+  width: 6px;
+}
+.mpp-chat-log::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
 }
 .mpp-chat-msg {
   font-size: 14px;
@@ -2256,7 +2288,7 @@ html {
   border: 1px solid var(--mpp-border);
   border-radius: 12px;
   box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
-  z-index: 60;
+  z-index: 9999999;
   padding: 14px;
   display: none;
 }
@@ -2469,9 +2501,15 @@ html {
     min-height: 64px;
   }
   .mpp-chat {
-    width: 70%;
-    height: 46%;
+    width: 72%;
+    height: 38%;
     padding-bottom: 8px;
+  }
+  /* On phones the stacked keys fill the screen, so keep the chat display-only
+     (no scroll grab) so taps always reach the keys underneath. */
+  .mpp-chat-log {
+    pointer-events: none;
+    overflow: hidden;
   }
   .mpp-panel {
     width: auto;

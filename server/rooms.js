@@ -175,8 +175,8 @@ const pianoState = new Map(); // roomId → { crown, onlyOwner, muted:Set, open:
 // flush window; anything past these is black-MIDI spam and gets dropped.
 const PIANO_MIN_KEY = 0;
 const PIANO_MAX_KEY = 87;
-const PIANO_MAX_NOTES_PER_MSG = 24;
-const PIANO_MAX_NOTES_PER_SEC = 160;
+const PIANO_MAX_NOTES_PER_MSG = 32; // note-ons relayed per message (offs uncapped)
+const PIANO_MAX_NOTES_PER_SEC = 200; // note-ons relayed per second per player
 const PIANO_MAX_MSGS_PER_SEC = 30;
 
 function getPianoState(roomId) {
@@ -2393,28 +2393,33 @@ function registerSocketHandlers() {
         if (++win.msgs > PIANO_MAX_MSGS_PER_SEC) return;
 
         const clean = [];
-        for (const ev of data.notes) {
+        let onCount = 0;
+        const list = data.notes;
+        const limit = Math.min(list.length, 256); // hard bound on work per message
+        for (let i = 0; i < limit; i++) {
+          const ev = list[i];
           if (!ev || typeof ev.n !== "number") continue;
           const n = ev.n | 0;
           if (n < PIANO_MIN_KEY || n > PIANO_MAX_KEY) continue;
-          if (++win.notes > PIANO_MAX_NOTES_PER_SEC) break;
-
-          const out = { n };
-          if (ev.s === 1) {
-            out.s = 1; // note off
-          } else {
-            let v = typeof ev.v === "number" ? ev.v : 0.6;
-            if (!(v > 0)) v = 0.6;
-            if (v > 1) v = 1;
-            out.v = Math.round(v * 1000) / 1000;
-          }
           let d = typeof ev.d === "number" ? ev.d : 0;
           if (!(d >= 0)) d = 0;
           if (d > 250) d = 250;
-          out.d = d | 0;
+          d = d | 0;
 
-          clean.push(out);
-          if (clean.length >= PIANO_MAX_NOTES_PER_MSG) break;
+          if (ev.s === 1) {
+            // Note-offs ALWAYS relay - throttling them would leave keys/voices
+            // stuck on everyone else's screen.
+            clean.push({ n, s: 1, d });
+            continue;
+          }
+          // Throttle only note-ONs (per second + per message) so a bot or
+          // black-MIDI flood can't lag the room.
+          if (++win.notes > PIANO_MAX_NOTES_PER_SEC) continue;
+          if (++onCount > PIANO_MAX_NOTES_PER_MSG) continue;
+          let v = typeof ev.v === "number" ? ev.v : 0.6;
+          if (!(v > 0)) v = 0.6;
+          if (v > 1) v = 1;
+          clean.push({ n, v: Math.round(v * 1000) / 1000, d });
         }
         if (clean.length === 0) return;
 

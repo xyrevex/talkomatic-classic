@@ -34,7 +34,7 @@ class Piano {
     this.volume = 0.85;
     this.samplesReady = false;
     this.loadingSamples = false;
-    this.MAX_VOICES = 56;
+    this.MAX_VOICES = 48; // hard polyphony cap; oldest voice is stolen past this
 
     // ── Sound settings (synth/mixer) ────────────────────────────────────
     this.instrument = "piano"; // "piano" | "synth"
@@ -78,9 +78,17 @@ class Piano {
     this.flushTimer = null;
     this.NOTE_FLUSH = 55;
 
-    // ── Key lighting ────────────────────────────────────────────────────
-    this.keyHolders = new Map(); // index -> Map(owner -> color)
+    // ── Key lighting (batched via rAF so heavy playing can't thrash layout) ──
+    this.keyHolders = new Map(); // index -> Map(owner -> pressTimestampMs)
     this.keyEls = new Array(88);
+    this._dirtyKeys = new Set(); // keys whose visual needs a refresh
+    this._visualRaf = null;
+    this.MAX_LIGHT_MS = 12000; // auto-clear a key stuck-lit this long (dropped off)
+
+    // ── Flood protection (one fast player must not lag the whole room) ───
+    this._renderWin = { t: 0, n: 0 }; // rolling 1s window of rendered note-ons
+    this.MAX_RENDER_NOTES_PER_SEC = 240;
+    this._sweepTimer = null;
 
     // ── Cursors (desktop single-row only) ───────────────────────────────
     this.cursors = new Map();
@@ -98,7 +106,7 @@ class Piano {
 
     // ── Chat ────────────────────────────────────────────────────────────
     this.chatNodes = [];
-    this.MAX_CHAT_MESSAGES = 40;
+    this.MAX_CHAT_MESSAGES = 80;
     this.chatTimestamps = [];
     this.CHAT_MIN_INTERVAL = 1000;
     this.CHAT_BURST_WINDOW = 30000;
@@ -108,6 +116,9 @@ class Piano {
     // ── MIDI ────────────────────────────────────────────────────────────
     this.midiAccess = null;
     this.midiCount = 0;
+
+    // Saved room chat text, restored when the piano closes.
+    this._savedChat = null;
 
     // ── Layout tunables (structure can't live in CSS) ───────────────────
     // At or below this width the keyboard stacks into rows so phone keys stay
@@ -246,6 +257,12 @@ class Piano {
     voice.t = this.audioCtx.currentTime;
     voice.pedal = false;
     this.voices.set(key, voice);
+    // Finished one-shot samples remove themselves so the map can't grow forever.
+    if (voice.src) {
+      voice.src.onended = () => {
+        if (this.voices.get(key) === voice) this.voices.delete(key);
+      };
+    }
     if (this.voices.size > this.MAX_VOICES) this._stealOldest();
   }
 
@@ -344,7 +361,12 @@ class Piano {
   panic() {
     for (const [, v] of this.voices) this._fade(v, 0.06);
     this.voices.clear();
-    for (const idx of [...this.keyHolders.keys()]) this.keyHolders.set(idx, new Map());
+    this.keyHolders.clear();
+    this._dirtyKeys.clear();
+    if (this._visualRaf != null) {
+      cancelAnimationFrame(this._visualRaf);
+      this._visualRaf = null;
+    }
     for (const el of this.keyEls) {
       if (el) { el.classList.remove("pressed"); el.style.removeProperty("--press"); }
     }
@@ -374,7 +396,7 @@ class Piano {
     this.downKeys.add(index);
     this.ensureAudio();
     this.playVoice("self", index, velocity);
-    this.lightKey(index, "#ff9800", true, "self");
+    this.lightKey(index, true, "self");
     this.bufferNote(index, velocity, false);
   }
 
@@ -382,7 +404,7 @@ class Piano {
     if (!this.downKeys.has(index)) return;
     this.downKeys.delete(index);
     this.releaseVoice("self", index);
-    this.lightKey(index, null, false, "self");
+    this.lightKey(index, false, "self");
     this.bufferNote(index, null, true);
   }
 
@@ -430,44 +452,96 @@ class Piano {
     if (!data || data.userId === this.userId || !Array.isArray(data.notes)) return;
     if (!this.isOpen || this.mode === "solo") return;
     const owner = data.userId;
-    const color = this.userColor(owner);
     this.ensureAudio();
+    // Play on arrival (batches land ~every 55ms, so this is already near-live).
+    // No per-note setTimeout: thousands of timers were a big part of the lag.
+    const now = this._now();
+    if (now - this._renderWin.t >= 1000) this._renderWin = { t: now, n: 0 };
     for (const ev of data.notes) {
       if (!ev || typeof ev.n !== "number") continue;
       const idx = ev.n | 0;
       if (idx < 0 || idx > 87) continue;
-      const delay = Math.max(0, Math.min(250, ev.d || 0));
-      const isOff = ev.s === 1;
-      const vel = ev.v;
-      setTimeout(() => {
-        if (!this.isOpen || this.mode === "solo") return;
-        if (isOff) {
-          this.releaseVoice(owner, idx);
-          this.lightKey(idx, null, false, owner);
-        } else {
-          this.playVoice(owner, idx, vel);
-          this.lightKey(idx, color, true, owner);
-        }
-      }, delay);
+      if (ev.s === 1) {
+        // Note-offs are ALWAYS honored so keys/voices never get stuck.
+        this.releaseVoice(owner, idx);
+        this.lightKey(idx, false, owner);
+        continue;
+      }
+      // Under a flood (bot / black-MIDI) stop sounding extra note-ons instead of
+      // letting audio + DOM work pile up and lag the whole room.
+      if (++this._renderWin.n > this.MAX_RENDER_NOTES_PER_SEC) continue;
+      this.playVoice(owner, idx, ev.v);
+      this.lightKey(idx, true, owner);
     }
   }
 
-  lightKey(index, color, on, owner) {
+  _now() {
+    return window.performance && performance.now ? performance.now() : Date.now();
+  }
+
+  // A color per note (pitch class) so the keyboard lights up like a rainbow.
+  noteColor(index) {
+    return `hsl(${((21 + index) % 12) * 30}, 85%, 58%)`;
+  }
+
+  // Record press/release as data only; the actual DOM write is batched in a
+  // single rAF pass per frame, so 1000 notes/sec still cost one repaint a frame.
+  lightKey(index, on, owner) {
     owner = owner || "self";
     let holders = this.keyHolders.get(index);
     if (!holders) { holders = new Map(); this.keyHolders.set(index, holders); }
-    if (on) holders.set(owner, color);
+    if (on) holders.set(owner, this._now());
     else holders.delete(owner);
-    const el = this.keyEls[index];
-    if (!el) return;
-    if (holders.size === 0) {
-      el.classList.remove("pressed");
-      el.style.removeProperty("--press");
-    } else {
-      let last = "#ff9800";
-      for (const c of holders.values()) last = c || last;
-      el.classList.add("pressed");
-      el.style.setProperty("--press", last);
+    this._dirtyKeys.add(index);
+    if (this._visualRaf == null) {
+      this._visualRaf = requestAnimationFrame(() => {
+        this._visualRaf = null;
+        this._flushVisuals();
+      });
+    }
+  }
+
+  _flushVisuals() {
+    for (const idx of this._dirtyKeys) {
+      const el = this.keyEls[idx];
+      if (!el) continue;
+      const holders = this.keyHolders.get(idx);
+      if (holders && holders.size > 0) {
+        el.style.setProperty("--press", this.noteColor(idx));
+        if (!el.classList.contains("pressed")) el.classList.add("pressed");
+      } else {
+        el.classList.remove("pressed");
+        el.style.removeProperty("--press");
+      }
+    }
+    this._dirtyKeys.clear();
+  }
+
+  // Safety net: clear keys/voices that have been held too long (a dropped
+  // note-off from a flood, or a player who vanished) so nothing stays stuck.
+  _sweepStuck() {
+    const now = this._now();
+    let dirty = false;
+    for (const [idx, holders] of this.keyHolders) {
+      for (const [owner, t] of holders) {
+        // Never clear a key the local player is physically still holding.
+        if (owner === "self" && this.downKeys.has(idx)) continue;
+        if (now - t > this.MAX_LIGHT_MS) {
+          holders.delete(owner);
+          this._dirtyKeys.add(idx);
+          dirty = true;
+        }
+      }
+    }
+    if (dirty && this._visualRaf == null) {
+      this._visualRaf = requestAnimationFrame(() => {
+        this._visualRaf = null;
+        this._flushVisuals();
+      });
+    }
+    const ctxNow = this.audioCtx ? this.audioCtx.currentTime : 0;
+    for (const [key, v] of this.voices) {
+      if (ctxNow - v.t > 14) { this._fade(v, 0.2); this.voices.delete(key); }
     }
   }
 
@@ -671,13 +745,11 @@ class Piano {
       if (this.cursorLayer.parentNode) this.cursorLayer.parentNode.removeChild(this.cursorLayer);
     }
 
-    // Re-apply any keys that are currently held.
+    // Re-apply any keys that are currently held (after a responsive rebuild).
     for (const [idx, holders] of this.keyHolders) {
       if (holders.size > 0 && this.keyEls[idx]) {
-        let last = "#ff9800";
-        for (const c of holders.values()) last = c || last;
+        this.keyEls[idx].style.setProperty("--press", this.noteColor(idx));
         this.keyEls[idx].classList.add("pressed");
-        this.keyEls[idx].style.setProperty("--press", last);
       }
     }
   }
@@ -841,13 +913,18 @@ class Piano {
   }
 
   _appendChat(node) {
+    const log = this.chatLog;
+    // Only autoscroll if already near the bottom, so reading/selecting history
+    // isn't yanked away when a new message arrives.
+    const nearBottom =
+      log.scrollHeight - log.scrollTop - log.clientHeight < 48;
     this.chatNodes.push(node);
-    this.chatLog.appendChild(node);
+    log.appendChild(node);
     while (this.chatNodes.length > this.MAX_CHAT_MESSAGES) {
       const old = this.chatNodes.shift();
       if (old && old.parentNode) old.parentNode.removeChild(old);
     }
-    this.chatLog.scrollTop = this.chatLog.scrollHeight;
+    if (nearBottom) log.scrollTop = log.scrollHeight;
   }
 
   addChatMessage(data) {
@@ -1176,7 +1253,7 @@ class Piano {
       if (v.owner === uid) { this._fade(v, 0.18); this.voices.delete(key); }
     }
     for (const [idx, holders] of this.keyHolders) {
-      if (holders.has(uid)) this.lightKey(idx, null, false, uid);
+      if (holders.has(uid)) this.lightKey(idx, false, uid);
     }
   }
 
@@ -1236,6 +1313,7 @@ class Piano {
     if (!this.isOpen) return;
     if (mode === "solo" && prev !== "solo") {
       this.socket.emit("piano close");
+      this.setRoomStatus(false);
       for (const [k, v] of this.voices) {
         if (v.owner !== "self") { this._fade(v, 0.12); this.voices.delete(k); }
       }
@@ -1243,6 +1321,7 @@ class Piano {
       this.closePanels();
     } else if (mode === "room" && prev !== "room") {
       this.socket.emit("piano open");
+      this.setRoomStatus(true);
     }
   }
 
@@ -1261,12 +1340,19 @@ class Piano {
   // OCTAVE / GLOBAL KEYS / MIDI
   // ═══════════════════════════════════════════════════════════════════════
 
-  keyMap() {
+  codeMap() {
+    // Keyed by physical key (e.code) so it works on any layout and never sticks
+    // when Shift / CapsLock change the produced character. Values are semitone
+    // offsets from the current octave base. Two rows span ~2.7 octaves; the
+    // Octave +/- buttons (or arrow keys) reach the rest of the 88.
     return {
-      z: 0, s: 1, x: 2, d: 3, c: 4, v: 5, g: 6, b: 7, h: 8, n: 9, j: 10,
-      m: 11, ",": 12, l: 13, ".": 14, ";": 15, "/": 16,
-      q: 12, "2": 13, w: 14, "3": 15, e: 16, r: 17, "5": 18, t: 19, "6": 20,
-      y: 21, "7": 22, u: 23, i: 24, "9": 25, o: 26, "0": 27, p: 28,
+      KeyZ: 0, KeyS: 1, KeyX: 2, KeyD: 3, KeyC: 4, KeyV: 5, KeyG: 6, KeyB: 7,
+      KeyH: 8, KeyN: 9, KeyJ: 10, KeyM: 11,
+      Comma: 12, KeyL: 13, Period: 14, Semicolon: 15, Slash: 16,
+      KeyQ: 12, Digit2: 13, KeyW: 14, Digit3: 15, KeyE: 16, KeyR: 17,
+      Digit5: 18, KeyT: 19, Digit6: 20, KeyY: 21, Digit7: 22, KeyU: 23,
+      KeyI: 24, Digit9: 25, KeyO: 26, Digit0: 27, KeyP: 28,
+      BracketLeft: 29, Equal: 30, BracketRight: 31,
     };
   }
 
@@ -1275,39 +1361,38 @@ class Piano {
   }
 
   bindGlobalEvents() {
-    this._map = this.keyMap();
+    this._codeMap = this.codeMap();
 
     this._onKeyDown = (e) => {
       if (!this.isOpen) return;
       if (this.isTypingTarget(e.target)) return;
-      if (e.key === "Escape") {
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // leave browser shortcuts alone
+      if (e.code === "Escape") {
         if (this.soundPanel.classList.contains("show") || this.helpPanel.classList.contains("show") || this.peoplePanel.classList.contains("show")) {
           this.closePanels();
         } else { this.close(); }
         return;
       }
-      if (e.key === " ") { e.preventDefault(); this.setSustain(true); return; }
-      if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); this.shiftOctave(12); return; }
-      if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); this.shiftOctave(-12); return; }
-      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      const off = this._map[k];
+      if (e.code === "Space") { e.preventDefault(); this.setSustain(true); return; }
+      if (e.code === "ArrowUp" || e.code === "ArrowRight") { e.preventDefault(); this.shiftOctave(12); return; }
+      if (e.code === "ArrowDown" || e.code === "ArrowLeft") { e.preventDefault(); this.shiftOctave(-12); return; }
+      const off = this._codeMap[e.code];
       if (off == null) return;
       e.preventDefault();
       if (e.repeat) return;
-      if (this.kbKeys.has(k)) return;
+      if (this.kbKeys.has(e.code)) return;
       const idx = this.octaveBase + off - 21;
       if (idx < 0 || idx > 87) return;
-      this.kbKeys.set(k, idx);
+      this.kbKeys.set(e.code, idx);
       this.pressKey(idx, this.KEY_VELOCITY);
     };
 
+    // Not gated on isOpen so a key-up always releases, even mid-close.
     this._onKeyUp = (e) => {
-      if (!this.isOpen) return;
-      if (e.key === " ") { this.setSustain(false); return; }
-      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (this.kbKeys.has(k)) {
-        const idx = this.kbKeys.get(k);
-        this.kbKeys.delete(k);
+      if (e.code === "Space") { this.setSustain(false); return; }
+      if (this.kbKeys.has(e.code)) {
+        const idx = this.kbKeys.get(e.code);
+        this.kbKeys.delete(e.code);
         this.releaseKey(idx);
       }
     };
@@ -1408,6 +1493,29 @@ class Piano {
     this._hintTimer = setTimeout(() => this.hintEl.classList.remove("show"), 1900);
   }
 
+  // Reflect "playing the piano" in the player's room chat box (top-right) while
+  // they are at the piano, then restore whatever they had. Mirrors Talkoboard.
+  setRoomStatus(on) {
+    if (typeof socket === "undefined" || !socket) return;
+    try {
+      if (on) {
+        if (this._savedChat == null)
+          this._savedChat = typeof selfRawText === "string" ? selfRawText : "";
+        socket.emit("chat update", {
+          diff: {
+            type: "full-replace",
+            text: "Playing the Piano - open Apps > Piano to join",
+          },
+        });
+      } else if (this._savedChat != null) {
+        socket.emit("chat update", {
+          diff: { type: "full-replace", text: this._savedChat },
+        });
+        this._savedChat = null;
+      }
+    } catch (_) {}
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // SOCKET
   // ═══════════════════════════════════════════════════════════════════════
@@ -1434,7 +1542,11 @@ class Piano {
     this.modal.classList.add("show");
     this.ensureAudio();
     if (typeof chatInput !== "undefined" && chatInput && chatInput.blur) chatInput.blur();
-    if (this.mode === "room") this.socket.emit("piano open");
+    if (this.mode === "room") {
+      this.socket.emit("piano open");
+      this.setRoomStatus(true);
+    }
+    if (!this._sweepTimer) this._sweepTimer = setInterval(() => this._sweepStuck(), 1000);
     this.showHint("Click keys or use your keyboard. Need help? Tap Help.");
   }
 
@@ -1450,8 +1562,10 @@ class Piano {
     this.kbKeys.clear();
     this.pointerKey.clear();
     if (this.flushTimer) { clearInterval(this.flushTimer); this.flushTimer = null; }
+    if (this._sweepTimer) { clearInterval(this._sweepTimer); this._sweepTimer = null; }
     this.noteBuf = [];
     if (this.mode === "room") this.socket.emit("piano close");
+    this.setRoomStatus(false);
     if (typeof chatInput !== "undefined" && chatInput)
       setTimeout(() => chatInput.focus && chatInput.focus(), 50);
   }
