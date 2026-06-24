@@ -446,13 +446,22 @@ io.use((socket, next) => {
 app.use(
   express.static(path.join(__dirname, "public"), {
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith(".js")) {
+      if (filePath.endsWith(".html")) {
+        // HTML must always be revalidated, never served stale from cache. The
+        // pages reference assets by ?v=, so a deploy only reaches users if they
+        // re-fetch the HTML and see the new versions. Without this the old HTML
+        // (and its old ?v=) sticks until a manual hard refresh. ETag still
+        // yields a cheap 304 when nothing changed.
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+      } else if (filePath.endsWith(".js")) {
         res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-        res.setHeader("Cache-Control", "public, max-age=31536000");
+        // Versioned by ?v=, so the URL itself changes on update - safe to cache
+        // hard and skip revalidation entirely (immutable).
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       } else if (filePath.endsWith(".css"))
-        res.setHeader("Cache-Control", "public, max-age=31536000");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|svg)$/))
-        res.setHeader("Cache-Control", "public, max-age=31536000");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       if (filePath.endsWith(".ttf")) res.setHeader("Content-Type", "font/ttf");
     },
   }),
