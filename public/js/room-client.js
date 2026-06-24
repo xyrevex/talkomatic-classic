@@ -1789,11 +1789,17 @@ socket.on("dev hide status", (data) => {
 // Small device-type indicator shown at the left of each user row. Derived from
 // the user agent on the server, purely cosmetic.
 const DEVICE_META = {
+  desktop: { icon: "fa-desktop", title: "Computer" },
   mobile: { icon: "fa-mobile-screen-button", title: "Mobile" },
   tablet: { icon: "fa-tablet-screen-button", title: "Tablet" },
   tv: { icon: "fa-tv", title: "TV" },
-  desktop: { icon: "fa-desktop", title: "Computer" },
-  unknown: { icon: "fa-circle-question", title: "Unknown device" },
+  vr: { icon: "fa-vr-cardboard", title: "VR" },
+  console: { icon: "fa-gamepad", title: "Console" },
+  watch: { icon: "fa-clock", title: "Watch" },
+  ereader: { icon: "fa-book-atlas", title: "E-Reader" },
+  car: { icon: "fa-car", title: "Car" },
+  bot: { icon: "fa-robot", title: "Bot" },
+  unknown: { icon: "fa-circle-question", title: "Unknown" },
 };
 function deviceIconFor(type) {
   const m = DEVICE_META[type] || DEVICE_META.unknown;

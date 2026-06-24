@@ -61,29 +61,41 @@ function roomCapacity(room) {
     : CONFIG.LIMITS.MAX_ROOM_CAPACITY;
 }
 
-// Coarse device class from the user agent, purely for a friendly room icon.
-// Not used for anything privileged.
 function deviceTypeFromUA(ua) {
   if (!ua || typeof ua !== "string") return "unknown";
+
   const s = ua.toLowerCase();
-  if (
-    /(smart-?tv|googletv|appletv|crkey|roku|aft[bms]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/.test(
-      s,
-    )
-  )
+
+  if (/(talkobot|robot|bot|crawler|spider|slurp|curl|wget|node)/.test(s)) 
+    return "bot";
+
+  if (/(oculusbrowser|vision pro|visionos|vive|valve index|windows mixed reality|pico|vr|xr)/.test(s)) 
+    return "vr";
+
+  if (/(playstation|ps4|ps5|xbox|nintendo)/.test(s))
+    return "console";
+
+  if (/(watchos|apple watch|wear os|wearos|galaxy watch|tizen watch)/.test(s))
+    return "watch";
+
+  if (/(kindle|kobo|nook|silk)/.test(s))
+    return "ereader";
+
+  if (/(smart-?tv|googletv|apple tv|crkey|roku|aft[bms]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/.test(s))
     return "tv";
-  if (
-    /(ipad|tablet|kindle|playbook|silk)/.test(s) ||
-    (/android/.test(s) && !/mobile/.test(s))
-  )
+
+  if (/(android automotive|androidauto|carplay|tesla|mbux|sync|qtcarbrowser)/.test(s))
+    return "car";
+
+  if (/(ipad|tablet|playbook)/.test(s) || (/android/.test(s) && !/mobile/.test(s)))
     return "tablet";
-  if (
-    /(mobi|iphone|ipod|android|blackberry|bb10|iemobile|opera mini|windows phone)/.test(
-      s,
-    )
-  )
+
+  if (/(mobi|iphone|ipod|android|blackberry|bb10|iemobile|opera mini|windows phone)/.test(s))
     return "mobile";
-  if (/(windows nt|macintosh|mac os x|linux|cros|x11)/.test(s)) return "desktop";
+
+  if (/(windows nt|macintosh|mac os x|linux|cros|x11)/.test(s))
+    return "desktop";
+
   return "unknown";
 }
 
@@ -102,7 +114,7 @@ function loadAnniversary() {
     const obj = JSON.parse(require("fs").readFileSync(ANNIVERSARY_PATH, "utf8"));
     if (obj && typeof obj.count === "number" && obj.count >= 0)
       anniversaryCount = Math.floor(obj.count);
-  } catch (_) {}
+  } catch (_) { }
 }
 function saveAnniversary() {
   if (annivSavePending) return;
@@ -113,7 +125,7 @@ function saveAnniversary() {
       JSON.stringify({ count: anniversaryCount }),
       "utf8",
     )
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         annivSavePending = false;
       });
@@ -362,7 +374,7 @@ async function pressureCleanup() {
   const currentTTL = Math.round(ttl / 1000);
   console.log(
     `[PRESSURE] Cleaned ${toDelete.length} solo room(s) | ` +
-      `Total: ${state.rooms.size} | TTL: ${currentTTL}s`,
+    `Total: ${state.rooms.size} | TTL: ${currentTTL}s`,
   );
 }
 
@@ -781,7 +793,7 @@ function calculateCurrentRoomLimit() {
   const cycles = Math.floor(total / perCycle);
   return Math.max(
     CONFIG.LIMITS.BASE_MAX_ROOMS +
-      cycles * CONFIG.LIMITS.ROOM_SCALING_INCREMENT,
+    cycles * CONFIG.LIMITS.ROOM_SCALING_INCREMENT,
     CONFIG.LIMITS.BASE_MAX_ROOMS,
   );
 }
@@ -836,8 +848,8 @@ function getRoomStatistics() {
     utilizationPercentage:
       totalRooms > 0
         ? Math.round(
-            (totalUsers / (totalRooms * CONFIG.LIMITS.MAX_ROOM_CAPACITY)) * 100,
-          )
+          (totalUsers / (totalRooms * CONFIG.LIMITS.MAX_ROOM_CAPACITY)) * 100,
+        )
         : 0,
   };
 }
@@ -1164,7 +1176,7 @@ async function saveRooms() {
     console.error("Error saving rooms:", err);
     try {
       await fs.unlink(path.join(__dirname, "..", "rooms.json.tmp"));
-    } catch (_) {}
+    } catch (_) { }
   }
 }
 
@@ -1532,7 +1544,7 @@ function joinRoom(socket, roomId, userId) {
         createErrorResponse(
           ERROR_CODES.FORBIDDEN,
           "Talkomatic is in maintenance mode. New joins are paused while " +
-            "people finish their conversations. Please try again shortly.",
+          "people finish their conversations. Please try again shortly.",
           null,
           true,
         ),
@@ -1649,7 +1661,7 @@ function joinRoom(socket, roomId, userId) {
         try {
           other.emit("session superseded", {});
           other.disconnect(true);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
 
@@ -1674,7 +1686,7 @@ function joinRoom(socket, roomId, userId) {
     } else {
       emitJoinSuccess(socket, room, userId, username, location);
     }
-    debouncedSaveRooms().catch(() => {});
+    debouncedSaveRooms().catch(() => { });
   } catch (err) {
     console.error("joinRoom error:", err);
     socket.emit(
@@ -1866,7 +1878,7 @@ function registerSocketHandlers() {
             );
             socket._errCount = (socket._errCount || 0) + 1;
             if (socket._errCount > 10) socket.disconnect(true);
-          } catch (_) {}
+          } catch (_) { }
         }
       };
     }
@@ -1895,7 +1907,7 @@ function registerSocketHandlers() {
               isIPBased: true,
             });
             await promisifySessionSave(socket.handshake.session).catch(
-              () => {},
+              () => { },
             );
           }
         }
@@ -2595,7 +2607,7 @@ function registerSocketHandlers() {
             createErrorResponse(
               ERROR_CODES.FORBIDDEN,
               "Talkomatic is in maintenance mode. Creating new rooms is paused " +
-                "while people finish their conversations.",
+              "while people finish their conversations.",
               null,
               true,
             ),
@@ -2696,7 +2708,7 @@ function registerSocketHandlers() {
         if (now - lastIpCreation < CONFIG.LIMITS.IP_ROOM_CREATION_COOLDOWN) {
           const waitSec = Math.ceil(
             (CONFIG.LIMITS.IP_ROOM_CREATION_COOLDOWN - (now - lastIpCreation)) /
-              1000,
+            1000,
           );
           return socket.emit(
             "error",
@@ -2775,7 +2787,7 @@ function registerSocketHandlers() {
           if (!socket.handshake.session.validatedRooms)
             socket.handshake.session.validatedRooms = {};
           socket.handshake.session.validatedRooms[roomId] = data.accessCode;
-          await promisifySessionSave(socket.handshake.session).catch(() => {});
+          await promisifySessionSave(socket.handshake.session).catch(() => { });
         }
 
         state.apiCache.delete("public_rooms");
@@ -2785,9 +2797,9 @@ function registerSocketHandlers() {
         const stats = getRoomStatistics();
         console.log(
           `Room created: ${roomId} (${roomName}) by IP:${clientIp} | ` +
-            `Total: ${stats.totalRooms}/${stats.hardCap} | ` +
-            `Healthy: ${stats.healthyRooms}/${stats.currentLimit} | ` +
-            `Solo TTL: ${stats.currentSoloTTL}s`,
+          `Total: ${stats.totalRooms}/${stats.hardCap} | ` +
+          `Healthy: ${stats.healthyRooms}/${stats.currentLimit} | ` +
+          `Solo TTL: ${stats.currentSoloTTL}s`,
         );
       }),
     );
@@ -2875,7 +2887,7 @@ function registerSocketHandlers() {
               socket.handshake.session.validatedRooms = {};
             socket.handshake.session.validatedRooms[data.roomId] = code;
             await promisifySessionSave(socket.handshake.session).catch(
-              () => {},
+              () => { },
             );
           }
         }
@@ -3032,7 +3044,7 @@ function registerSocketHandlers() {
           handleTyping(socket, userId, username, false);
           return;
         }
-        await typingLimiter.consume(userId).catch(() => {});
+        await typingLimiter.consume(userId).catch(() => { });
         if (!data || typeof data.isTyping !== "boolean") return;
         handleTyping(socket, userId, username, data.isTyping);
       }),
@@ -3242,7 +3254,7 @@ function registerSocketHandlers() {
 
         if (socket.handshake?.session) {
           socket.handshake.session.isDevHidden = desired;
-          await promisifySessionSave(socket.handshake.session).catch(() => {});
+          await promisifySessionSave(socket.handshake.session).catch(() => { });
         }
 
         const userId = socket.handshake.session?.userId;
@@ -3376,7 +3388,7 @@ function registerSocketHandlers() {
             createErrorResponse(
               ERROR_CODES.BAD_REQUEST,
               "Invalid duration. Use 1h, 24h, 7d" +
-                (socket.isDev ? ", or permanent." : "."),
+              (socket.isDev ? ", or permanent." : "."),
             ),
           );
         }
@@ -3439,7 +3451,7 @@ function registerSocketHandlers() {
             });
             if (s.roomId && uid) await leaveRoom(s, uid);
             s.disconnect(true);
-          } catch (_) {}
+          } catch (_) { }
         }
         logStaff(
           socket,
@@ -3663,7 +3675,7 @@ function registerSocketHandlers() {
         if (targetSocket?.handshake?.session) {
           targetSocket.handshake.session.username = "Anonymous";
           await promisifySessionSave(targetSocket.handshake.session).catch(
-            () => {},
+            () => { },
           );
         }
         const existing = state.users.get(targetUserId) || { id: targetUserId };
@@ -4796,21 +4808,21 @@ function registerSocketHandlers() {
         });
         const you = socket.deviceId
           ? Object.assign(invites.stats(socket.deviceId), {
-              rank: invites.rankOf(socket.deviceId),
-              invitees: invites
-                .invitees(socket.deviceId)
-                .map((iv) => {
-                  const r = identity.getRecord(iv.deviceId) || {};
-                  return {
-                    name: r.name || "Someone",
-                    location: r.loc || "",
-                    status: iv.credited ? "active" : "pending",
-                    at: iv.at,
-                  };
-                })
-                .sort((a, b) => b.at - a.at)
-                .slice(0, 50),
-            })
+            rank: invites.rankOf(socket.deviceId),
+            invitees: invites
+              .invitees(socket.deviceId)
+              .map((iv) => {
+                const r = identity.getRecord(iv.deviceId) || {};
+                return {
+                  name: r.name || "Someone",
+                  location: r.loc || "",
+                  status: iv.credited ? "active" : "pending",
+                  at: iv.at,
+                };
+              })
+              .sort((a, b) => b.at - a.at)
+              .slice(0, 50),
+          })
           : null;
         socket.emit("leaderboard data", {
           top,
@@ -4957,15 +4969,13 @@ function registerSocketHandlers() {
           "purge invites",
           { name: targetName, id: deviceId },
           "-",
-          `${res.removed} removed${cohortKey === "all-flagged" ? " (all flagged)" : ""}${
-            reason ? " - " + reason : ""
+          `${res.removed} removed${cohortKey === "all-flagged" ? " (all flagged)" : ""}${reason ? " - " + reason : ""
           }`,
         );
         audit.recordNotification({
           kind: "invite",
-          text: `${socket.staffLabel || "staff"} removed ${res.removed} farmed pending invite${
-            res.removed === 1 ? "" : "s"
-          } from ${targetName}.`,
+          text: `${socket.staffLabel || "staff"} removed ${res.removed} farmed pending invite${res.removed === 1 ? "" : "s"
+            } from ${targetName}.`,
           minLevel: 2,
         });
         socket.emit("staff action result", {
@@ -5460,7 +5470,7 @@ function startCleanupIntervals() {
     if (ghostCount > 0) {
       console.log(`Ghost cleanup: removed ${ghostCount} ghost(s)`);
       updateLobby();
-      debouncedSaveRooms().catch(() => {});
+      debouncedSaveRooms().catch(() => { });
     }
   }, 60000);
 
@@ -5471,13 +5481,13 @@ function startCleanupIntervals() {
     const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
     console.log(
       `[STATUS] Clients:${io().sockets.sockets.size} ` +
-        `Rooms:${stats.totalRooms}/${stats.hardCap} ` +
-        `Healthy:${stats.healthyRooms}/${stats.currentLimit} ` +
-        `Solo:${stats.soloRooms} TTL:${stats.currentSoloTTL}s ` +
-        `Users:${stats.totalUsers} Heap:${heapMB}MB ` +
-        `Tokens:${state.botTokens.size} ` +
-        `Devs:${state.devUsers.size} ` +
-        `Boards:${boardState.size}`,
+      `Rooms:${stats.totalRooms}/${stats.hardCap} ` +
+      `Healthy:${stats.healthyRooms}/${stats.currentLimit} ` +
+      `Solo:${stats.soloRooms} TTL:${stats.currentSoloTTL}s ` +
+      `Users:${stats.totalUsers} Heap:${heapMB}MB ` +
+      `Tokens:${state.botTokens.size} ` +
+      `Devs:${state.devUsers.size} ` +
+      `Boards:${boardState.size}`,
     );
     if (heapMB > 400) {
       console.warn(`MEMORY WARNING: ${heapMB}MB heap`);
@@ -5518,7 +5528,7 @@ function purgeAllGhostUsers() {
   }
   if (total > 0) {
     console.log(`Startup purge: removed ${total} ghost(s)`);
-    debouncedSaveRooms().catch(() => {});
+    debouncedSaveRooms().catch(() => { });
   } else console.log("Startup purge: no ghosts found");
 }
 
