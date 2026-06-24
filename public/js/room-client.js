@@ -1793,7 +1793,7 @@ const DEVICE_META = {
   mobile: { icon: "fa-mobile-screen-button", title: "Mobile" },
   tablet: { icon: "fa-tablet-screen-button", title: "Tablet" },
   tv: { icon: "fa-tv", title: "TV" },
-  vr: { icon: "fa-cardboard", title: "VR" },
+  vr: { icon: "fa-vr-cardboard", title: "VR" },
   console: { icon: "fa-gamepad", title: "Console" },
   watch: { icon: "fa-clock", title: "Watch" },
   ereader: { icon: "fa-book-atlas", title: "E-Reader" },

@@ -66,52 +66,31 @@ function deviceTypeFromUA(ua) {
 
   const s = ua.toLowerCase();
 
-  if (/(talkobot|robot|bot|crawler|spider|slurp|curl|wget)/.test(s))
+  if (/(talkobot|robot|bot|crawler|spider|slurp|curl|wget|node)/.test(s)) 
     return "bot";
 
-  if (
-    /(oculus|quest|vision pro|visionos|vive|valve index|windows mixed reality|pico|xr)/.test(
-      s,
-    )
-  )
+  if (/(oculusbrowser|vision pro|visionos|vive|valve index|windows mixed reality|pico|vr|xr)/.test(s)) 
     return "vr";
 
-  if (
-    /(playstation|ps4|ps5|xbox|nintendo switch|nintendobrowser)/.test(s)
-  )
+  if (/(playstation|ps4|ps5|xbox|nintendo)/.test(s))
     return "console";
 
-  if (
-    /(watchos|apple watch|wear os|wearos|galaxy watch|tizen watch)/.test(s)
-  )
+  if (/(watchos|apple watch|wear os|wearos|galaxy watch|tizen watch)/.test(s))
     return "watch";
 
-  if (/(kindle|kobo|nook)/.test(s))
+  if (/(kindle|kobo|nook|silk)/.test(s))
     return "ereader";
 
-  if (
-    /(smart-?tv|googletv|appletv|crkey|roku|aft[bms]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/.test(
-      s,
-    )
-  )
+  if (/(smart-?tv|googletv|apple tv|crkey|roku|aft[bms]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/.test(s))
     return "tv";
 
-  if (
-    /(android automotive|androidauto|carplay|tesla|mbux|sync)/.test(s)
-  )
+  if (/(android automotive|androidauto|carplay|tesla|mbux|sync|qtcarbrowser)/.test(s))
     return "car";
 
-  if (
-    /(ipad|tablet|playbook|silk)/.test(s) ||
-    (/android/.test(s) && !/mobile/.test(s))
-  )
+  if (/(ipad|tablet|playbook)/.test(s) || (/android/.test(s) && !/mobile/.test(s)))
     return "tablet";
 
-  if (
-    /(mobi|iphone|ipod|android|blackberry|bb10|iemobile|opera mini|windows phone)/.test(
-      s,
-    )
-  )
+  if (/(mobi|iphone|ipod|android|blackberry|bb10|iemobile|opera mini|windows phone)/.test(s))
     return "mobile";
 
   if (/(windows nt|macintosh|mac os x|linux|cros|x11)/.test(s))
