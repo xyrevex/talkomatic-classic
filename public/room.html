@@ -300,6 +300,10 @@
       #filterToggle.filter-off {
         opacity: 0.4;
       }
+      #layoutToggle {
+        font-size: 18px;
+        color: #fff;
+      }
 
       /* Feature announcement modal */
       .feature-announce-overlay {
@@ -443,6 +447,15 @@
             title="Word Filter: ON (click to disable)"
           >
             🛡️
+          </button>
+          <button
+            id="layoutToggle"
+            class="mute-toggle"
+            aria-label="Switch layout"
+            title="Toggle layout"
+            style="display: none"
+          >
+            <i class="fas fa-bars"></i>
           </button>
           <button
             id="appDirectoryToggle"

@@ -23,6 +23,11 @@ let currentLocation = "";
 let currentRoomId = "";
 let currentUserId = "";
 let currentRoomLayout = "horizontal";
+// Desktop-only, client-side view override. When set it wins over the room's
+// layout for THIS user's screen only; the server is never told, so nobody
+// else is affected and incoming room updates never clobber it. Null means
+// "follow the room's layout".
+let userLayoutPreference = null;
 let currentRoomName = "";
 let lastSentMessage = "";
 let chatInput = null;
@@ -2117,7 +2122,11 @@ function adjustLayout() {
     activeUserId = activeEl.closest(".chat-row")?.dataset.userId;
   }
 
-  const layout = isMobile() ? "horizontal" : currentRoomLayout;
+  // Mobile is always horizontal. On desktop the user's local toggle (if they
+  // flipped it) wins over the room's layout; otherwise the room's layout is used.
+  const layout = isMobile()
+    ? "horizontal"
+    : userLayoutPreference || currentRoomLayout;
 
   // Reset styles that only the crowd grid sets, so the <=5 layouts below are
   // never affected by a previous larger headcount.
@@ -2203,6 +2212,36 @@ function adjustLayout() {
     );
     if (el) setTimeout(() => el.focus(), 0);
   }
+
+  refreshLayoutToggle();
+}
+
+// The layout toggle only makes sense on desktop in a small room. Past 5 users
+// the room switches to the crowd grid, so the toggle is removed; it comes back
+// the moment the room drops to 5 or fewer. Also keeps the icon and tooltip in
+// sync with whichever layout is actually on screen.
+function refreshLayoutToggle() {
+  const btn = document.getElementById("layoutToggle");
+  if (!btn) return;
+  const userCount = document.querySelectorAll(".chat-row").length;
+  const show = !isMobile() && userCount > 0 && userCount <= 5;
+  btn.style.display = show ? "flex" : "none";
+  if (!show) return;
+  const horizontal =
+    (userLayoutPreference || currentRoomLayout) === "horizontal";
+  const icon = btn.querySelector("i");
+  if (icon) icon.className = horizontal ? "fas fa-bars" : "fas fa-table-columns";
+  btn.title = horizontal
+    ? "Layout: Horizontal (click to switch to vertical)"
+    : "Layout: Vertical (click to switch to horizontal)";
+}
+
+// Flip this user's local view between horizontal and vertical, then re-render.
+// Purely client-side: no socket event, so only this screen changes.
+function toggleRoomLayout() {
+  const current = userLayoutPreference || currentRoomLayout;
+  userLayoutPreference = current === "horizontal" ? "vertical" : "horizontal";
+  adjustLayout();
 }
 
 function handleViewportChange() {
@@ -2634,6 +2673,11 @@ window.addEventListener("load", () => {
   // Word filter toggle
   const filterBtn = document.getElementById("filterToggle");
   if (filterBtn) filterBtn.addEventListener("click", toggleWordFilter);
+
+  // Layout toggle (desktop, client-side view preference). Shown only at <=5
+  // users; refreshLayoutToggle() handles when it appears/disappears.
+  const layoutBtn = document.getElementById("layoutToggle");
+  if (layoutBtn) layoutBtn.addEventListener("click", toggleRoomLayout);
 
   // Viewport: immediate handler so the mobile keyboard reflows without lag
   if (window.visualViewport)
