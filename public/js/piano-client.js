@@ -86,14 +86,29 @@ class Piano {
     this.MAX_LIGHT_MS = 12000; // auto-clear a key stuck-lit this long (dropped off)
 
     // ── Flood protection (one fast player must not lag the whole room) ───
-    this._renderWin = { t: 0, n: 0 }; // rolling 1s window of rendered note-ons
+    // Note-ons are ALWAYS lit (cheap, rAF-batched) so fast playing stays
+    // visible; only the expensive audio is rate-capped. Remote players share one
+    // cap; the local player gets a far higher one so real playing (even fast
+    // MIDI glissandos) is never clipped - it only stops a black-MIDI / file
+    // flood from saturating this tab's audio thread.
+    this._renderWin = { t: 0, n: 0 }; // rolling 1s window of sounded remote note-ons
     this.MAX_RENDER_NOTES_PER_SEC = 240;
+    this._selfWin = { t: 0, n: 0 }; // rolling 1s window of sounded local note-ons
+    this.MAX_SELF_NOTES_PER_SEC = 360;
     this._sweepTimer = null;
 
     // ── Cursors (desktop single-row only) ───────────────────────────────
     this.cursors = new Map();
     this.cursorT = 0;
-    this.CURSOR_INTERVAL = 50;
+    this.CURSOR_INTERVAL = 40; // ms between outgoing cursor samples (sender, ~25Hz)
+    // Remote cursors are rendered ~RENDER_DELAY ms in the past and interpolated
+    // between buffered snapshots, so irregular packet arrival looks smooth
+    // instead of teleporting between packets. When the buffer runs out (the
+    // sender paused, or a packet is late) we HOLD at the last known position -
+    // no extrapolation, which used to overshoot and then snap back on stop.
+    this.CURSOR_RENDER_DELAY = 60; // ms; small, so cursors stay near the live notes
+    this.CURSOR_TIMEOUT = 3000; // ms with no update -> hide the cursor
+    this._cursorRaf = null;
     this.isMultiRow = false;
 
     // ── Crown / mutes / participants ────────────────────────────────────
@@ -394,10 +409,25 @@ class Piano {
     if (!this.canPlay()) { this.flashLocked(); return; }
     if (this.downKeys.has(index)) return;
     this.downKeys.add(index);
-    this.ensureAudio();
-    this.playVoice("self", index, velocity);
+    // Show the press, bounce your name, and tell the room first - these stay
+    // cheap and batched even under a fast MIDI flood (the server clamps the
+    // network side).
     this.lightKey(index, true, "self");
+    this.bouncePlayer(this.userId);
     this.bufferNote(index, velocity, false);
+    // Cap only the audio so a black-MIDI / file flood through a MIDI input can't
+    // saturate the audio thread and stall the tab. The cap sits far above any
+    // human (even a fast glissando), so real notes always sound.
+    if (this._allowSelfSound()) {
+      this.ensureAudio();
+      this.playVoice("self", index, velocity);
+    }
+  }
+
+  _allowSelfSound() {
+    const now = this._now();
+    if (now - this._selfWin.t >= 1000) this._selfWin = { t: now, n: 0 };
+    return ++this._selfWin.n <= this.MAX_SELF_NOTES_PER_SEC;
   }
 
   releaseKey(index) {
@@ -467,11 +497,15 @@ class Piano {
         this.lightKey(idx, false, owner);
         continue;
       }
-      // Under a flood (bot / black-MIDI) stop sounding extra note-ons instead of
-      // letting audio + DOM work pile up and lag the whole room.
+      // Always light the key + bounce the player: this is the cheap, batched
+      // path, so even a fast MIDI flood stays VISIBLE (it "registers") instead
+      // of vanishing.
+      this.lightKey(idx, true, owner);
+      this.bouncePlayer(owner);
+      // Throttle only the expensive audio - under a flood (bot / black-MIDI)
+      // stop sounding extra note-ons so audio work can't pile up and lag the room.
       if (++this._renderWin.n > this.MAX_RENDER_NOTES_PER_SEC) continue;
       this.playVoice(owner, idx, ev.v);
-      this.lightKey(idx, true, owner);
     }
   }
 
@@ -567,6 +601,9 @@ class Piano {
     this.keyboardWrap = this.el("div", "mpp-keyboard-wrap");
     center.appendChild(this.keyboardWrap);
     stage.appendChild(center);
+
+    // "Now playing" strip, pinned to the top-left of the stage.
+    stage.appendChild(this.buildNowPlaying());
 
     this.cursorLayer = this.el("div", "mpp-cursor-layer");
 
@@ -864,10 +901,12 @@ class Piano {
       }
       e.stopPropagation();
     });
-    // Focusing the input "wakes" the chat: full opacity + scrollable. Blurring
-    // lets it fade back and become click-through so the keys play again.
+    // Focusing the input "wakes" the chat: full opacity + scrollable. We do NOT
+    // collapse it on blur - clicking a previous message to read or highlight it
+    // blurs the input, and collapsing there would yank the text away. The chat
+    // stays awake until you click outside it (handled in _onDocPointerDown),
+    // which then lets it fade back and become click-through so the keys play.
     this.chatInput.addEventListener("focus", () => chat.classList.add("active"));
-    this.chatInput.addEventListener("blur", () => chat.classList.remove("active"));
     inputWrap.appendChild(this.chatInput);
     chat.appendChild(this.chatLog);
     chat.appendChild(inputWrap);
@@ -937,7 +976,9 @@ class Piano {
       this.participants.set(data.userId, { username: data.username });
 
     const isSelf = data.userId === this.userId;
-    const col = isSelf ? "#ff9800" : this.userColor(data.userId);
+    // Everyone (including you) uses the same hashed color so a person looks the
+    // same on every screen. "(you)"/self styling marks your own messages.
+    const col = this.userColor(data.userId);
     const msg = this.el("div", "mpp-chat-msg" + (isSelf ? " mpp-chat-self" : ""));
     const name = this.el("span", "mpp-chat-name", data.username || "User");
     name.style.color = col;
@@ -1224,7 +1265,7 @@ class Piano {
       const row = this.el("div", "mpp-person");
       const avatar = this.el("span", "mpp-person-avatar",
         (r.username || "?").trim().charAt(0).toUpperCase() || "?");
-      avatar.style.background = r.self ? "#ff9800" : this.userColor(r.userId);
+      avatar.style.background = this.userColor(r.userId);
       const name = this.el("span", "mpp-person-name", r.username + (r.self ? " (you)" : ""));
       row.appendChild(avatar);
       row.appendChild(name);
@@ -1250,6 +1291,69 @@ class Piano {
       }
       this.peopleList.appendChild(row);
     }
+    this.renderNowPlaying();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // "NOW PLAYING" STRIP (desktop header) - who is here + a bounce per note
+  // ═══════════════════════════════════════════════════════════════════════
+
+  buildNowPlaying() {
+    this.nowPlaying = this.el("div", "mpp-nowplaying");
+    this.npChips = new Map(); // userId -> { el, dot, name, last }
+    return this.nowPlaying;
+  }
+
+  renderNowPlaying() {
+    if (!this.nowPlaying) return;
+    // Self first, then everyone else at the piano.
+    const rows = [{ userId: this.userId, username: this.username, self: true }];
+    for (const [uid, info] of this.participants) {
+      if (uid === this.userId) continue;
+      rows.push({ userId: uid, username: (info && info.username) || "User" });
+    }
+    // Reconcile chips in place so a chip that is mid-bounce is never recreated.
+    const seen = new Set();
+    for (const r of rows) {
+      seen.add(r.userId);
+      let chip = this.npChips.get(r.userId);
+      if (!chip) {
+        const el = this.el("div", "mpp-np-chip");
+        const name = this.el("span", "mpp-np-name");
+        el.appendChild(name);
+        chip = { el, name, last: 0 };
+        this.npChips.set(r.userId, chip);
+      }
+      // The chip itself is tinted in the player's color (no separate dot), with
+      // readable ink picked for that color. Self uses the same hashed color as
+      // everyone else so you look the same on every screen.
+      const bg = this.userColor(r.userId);
+      chip.el.style.background = bg;
+      chip.name.style.color = this._inkFor(bg);
+      chip.name.textContent = r.username + (r.self ? " (you)" : "");
+      chip.el.classList.toggle("mpp-np-crown", !!this.crown && this.crown === r.userId);
+      this.nowPlaying.appendChild(chip.el); // keep DOM order (self first)
+    }
+    for (const [uid, chip] of this.npChips) {
+      if (!seen.has(uid)) {
+        if (chip.el.parentNode) chip.el.parentNode.removeChild(chip.el);
+        this.npChips.delete(uid);
+      }
+    }
+  }
+
+  // Pulse a player's chip when they press a key. Throttled so a held trill (or a
+  // flood) can't thrash layout - within the window it is already mid-bounce.
+  bouncePlayer(userId) {
+    if (!this.npChips) return;
+    const chip = this.npChips.get(userId);
+    if (!chip) return;
+    const now = this._now();
+    if (now - chip.last < 90) return;
+    chip.last = now;
+    chip.el.classList.remove("bounce");
+    void chip.el.offsetWidth; // restart the animation on rapid repeats
+    chip.el.classList.add("bounce");
   }
 
   dropUserVoices(uid) {
@@ -1285,20 +1389,90 @@ class Piano {
       elc.appendChild(dot);
       elc.appendChild(label);
       this.cursorLayer.appendChild(elc);
-      c = { el: elc };
+      c = { el: elc, buf: [], lastSeen: 0 };
       this.cursors.set(d.userId, c);
     }
-    const r = this.keyboardEl.getBoundingClientRect();
-    c.el.style.transform = `translate(${d.x * r.width}px, ${d.y * r.height}px)`;
-    c.el.style.display = "block";
-    if (c.timeout) clearTimeout(c.timeout);
-    c.timeout = setTimeout(() => { c.el.style.display = "none"; }, 3000);
+    // Buffer the snapshot (tagged with local arrival time) instead of moving the
+    // cursor now; the rAF loop interpolates from it. This is what kills the
+    // jitter - we never jump straight to the latest packet.
+    const x = Math.max(0, Math.min(1, d.x));
+    const y = Math.max(0, Math.min(1, d.y));
+    const now = this._now();
+    c.buf.push({ t: now, x, y });
+    if (c.buf.length > 120) c.buf.splice(0, c.buf.length - 120);
+    c.lastSeen = now;
+    this._ensureCursorLoop();
+  }
+
+  // One rAF loop drives every remote cursor at the display refresh rate, no
+  // matter how irregularly packets land. It runs only while a cursor is live and
+  // stops itself once they all go idle; the next packet restarts it.
+  _ensureCursorLoop() {
+    if (this._cursorRaf == null && this.isOpen && !this.isMultiRow) {
+      this._cursorRaf = requestAnimationFrame(() => this._cursorFrame());
+    }
+  }
+
+  _cursorFrame() {
+    this._cursorRaf = null;
+    if (!this.isOpen || this.isMultiRow || !this.keyboardEl) return;
+    const now = this._now();
+    const renderTime = now - this.CURSOR_RENDER_DELAY; // render slightly in the past
+    const rect = this.keyboardEl.getBoundingClientRect();
+    let live = false;
+    for (const [, c] of this.cursors) {
+      if (now - c.lastSeen > this.CURSOR_TIMEOUT) {
+        if (c.el.style.display !== "none") c.el.style.display = "none";
+        continue;
+      }
+      live = true;
+      const pos = this._sampleCursor(c.buf, renderTime);
+      if (pos) {
+        c.el.style.transform = `translate(${pos.x * rect.width}px, ${pos.y * rect.height}px)`;
+        if (c.el.style.display !== "block") c.el.style.display = "block";
+      }
+      this._pruneCursorBuf(c.buf, renderTime);
+    }
+    if (live) this._cursorRaf = requestAnimationFrame(() => this._cursorFrame());
+  }
+
+  // Find the two snapshots straddling renderTime and lerp between them. Before
+  // the buffer starts, hold the oldest; past the newest (a late packet),
+  // extrapolate along the last segment for a clamped window, then hold.
+  _sampleCursor(buf, renderTime) {
+    const n = buf.length;
+    if (n === 0) return null;
+    if (n === 1 || renderTime <= buf[0].t) return { x: buf[0].x, y: buf[0].y };
+    for (let i = n - 1; i > 0; i--) {
+      const a = buf[i - 1], b = buf[i];
+      if (a.t <= renderTime && renderTime <= b.t) {
+        const span = b.t - a.t;
+        const f = span > 0 ? (renderTime - a.t) / span : 1;
+        return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+      }
+    }
+    // Past the newest snapshot (sender paused or a packet is late): hold at the
+    // last known position. We deliberately do NOT extrapolate - projecting past
+    // the final point and then correcting is exactly what made the cursor snap
+    // back when someone stopped moving.
+    const b = buf[n - 1];
+    return { x: b.x, y: b.y };
+  }
+
+  // Keep the snapshot just before renderTime (and everything after) so there is
+  // always a segment to interpolate; never drop below two.
+  _pruneCursorBuf(buf, renderTime) {
+    let lo = 0;
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i].t <= renderTime) lo = i; else break;
+    }
+    const drop = Math.min(lo, Math.max(0, buf.length - 2));
+    if (drop > 0) buf.splice(0, drop);
   }
 
   removeRemoteCursor(uid) {
     const c = this.cursors.get(uid);
     if (c) {
-      if (c.timeout) clearTimeout(c.timeout);
       if (c.el.parentNode) c.el.parentNode.removeChild(c.el);
       this.cursors.delete(uid);
     }
@@ -1337,6 +1511,7 @@ class Piano {
     if (this.crownWrap) this.crownWrap.style.display = room ? "" : "none";
     if (this.peopleBtn) this.peopleBtn.style.display = room ? "" : "none";
     if (this.chatEl) this.chatEl.style.display = room ? "" : "none";
+    if (this.nowPlaying) this.nowPlaying.style.display = room ? "" : "none";
     this.updateCanPlayUI();
   }
 
@@ -1416,6 +1591,14 @@ class Piano {
         }
       }
     };
+    // Deactivate the chat only when you click OUTSIDE it. Clicks inside (a
+    // message, the scrollbar, the input) keep it awake, so you can read, scroll
+    // and highlight history without being kicked out of the input.
+    this._onDocPointerDown = (e) => {
+      if (!this.chatEl || !this.chatEl.classList.contains("active")) return;
+      if (this.chatEl.contains(e.target)) return;
+      this.chatEl.classList.remove("active");
+    };
     this._onResize = () => {
       if (this._resizeRaf) cancelAnimationFrame(this._resizeRaf);
       this._resizeRaf = requestAnimationFrame(() => {
@@ -1448,6 +1631,7 @@ class Piano {
     document.addEventListener("pointerup", this._onPointerUp);
     document.addEventListener("pointercancel", this._onPointerCancel);
     document.addEventListener("click", this._onDocClick);
+    document.addEventListener("pointerdown", this._onDocPointerDown, true);
     window.addEventListener("resize", this._onResize);
     document.addEventListener("wheel", this._onWheel, { passive: false });
 
@@ -1509,6 +1693,41 @@ class Piano {
     return `hsl(${h % 360}, 72%, 62%)`;
   }
 
+  // Pick dark or light text for a given chip background so the name stays
+  // readable on any player color. Handles "#rrggbb" and "hsl(h, s%, l%)".
+  _inkFor(bg) {
+    let r, g, b;
+    if (bg[0] === "#") {
+      const n = parseInt(bg.slice(1), 16);
+      r = (n >> 16) & 255; g = (n >> 8) & 255; b = n & 255;
+    } else {
+      const m = bg.match(/hsl\(\s*([\d.]+)[, ]+([\d.]+)%[, ]+([\d.]+)%/i);
+      if (!m) return "#15131c";
+      [r, g, b] = this._hslToRgb(+m[1], +m[2] / 100, +m[3] / 100);
+    }
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 150 ? "#15131c" : "#ffffff";
+  }
+
+  _hslToRgb(h, s, l) {
+    h = (((h % 360) + 360) % 360) / 360;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const hue2rgb = (t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    return [
+      Math.round(hue2rgb(h + 1 / 3) * 255),
+      Math.round(hue2rgb(h) * 255),
+      Math.round(hue2rgb(h - 1 / 3) * 255),
+    ];
+  }
+
   showHint(text) {
     if (!this.hintEl) return;
     this.hintEl.textContent = text;
@@ -1563,6 +1782,7 @@ class Piano {
     if (this.isOpen) return;
     this.isOpen = true;
     this.renderKeyboard();
+    this.renderNowPlaying();
     this.modal.classList.add("show");
     this.ensureAudio();
     if (typeof chatInput !== "undefined" && chatInput && chatInput.blur) chatInput.blur();
@@ -1587,6 +1807,8 @@ class Piano {
     this.pointerKey.clear();
     if (this.flushTimer) { clearInterval(this.flushTimer); this.flushTimer = null; }
     if (this._sweepTimer) { clearInterval(this._sweepTimer); this._sweepTimer = null; }
+    if (this._cursorRaf != null) { cancelAnimationFrame(this._cursorRaf); this._cursorRaf = null; }
+    if (this.chatEl) this.chatEl.classList.remove("active");
     this.noteBuf = [];
     if (this.mode === "room") this.socket.emit("piano close");
     this.setRoomStatus(false);
@@ -1601,9 +1823,10 @@ class Piano {
     document.removeEventListener("pointerup", this._onPointerUp);
     document.removeEventListener("pointercancel", this._onPointerCancel);
     document.removeEventListener("click", this._onDocClick);
+    document.removeEventListener("pointerdown", this._onDocPointerDown, true);
     window.removeEventListener("resize", this._onResize);
     document.removeEventListener("wheel", this._onWheel);
-    for (const [, c] of this.cursors) if (c.timeout) clearTimeout(c.timeout);
+    if (this._cursorRaf != null) { cancelAnimationFrame(this._cursorRaf); this._cursorRaf = null; }
     if (this.modal && this.modal.parentNode) this.modal.parentNode.removeChild(this.modal);
   }
 }

@@ -1751,6 +1751,62 @@ html {
   margin-left: auto;
 }
 
+/* ── "Now playing" strip (desktop): who is at the piano, with a little bounce
+   on each chip every time that person presses a key. Pinned to the top-left of
+   the stage. Each chip is tinted in that player's color (set inline in JS).
+   Hidden on phones (see the mobile block) to save space. ───────────────────── */
+.mpp-nowplaying {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 8; /* above the keys, below the hint + panels */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+  pointer-events: none; /* purely informational - never block the keys / chat */
+}
+.mpp-np-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 160px;
+  padding: 4px 11px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  will-change: transform;
+}
+.mpp-np-name {
+  color: #15131c;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mpp-np-crown {
+  border-color: #ffd86b;
+  box-shadow:
+    0 0 0 2px rgba(255, 206, 84, 0.6),
+    0 1px 4px rgba(0, 0, 0, 0.45);
+}
+@keyframes mpp-np-bounce {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    transform: translateY(-6px) scale(1.07);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+.mpp-np-chip.bounce {
+  animation: mpp-np-bounce 0.34s ease;
+}
+
 .mpp-segment {
   display: inline-flex;
   background: rgba(255, 255, 255, 0.06);
@@ -2226,10 +2282,21 @@ html {
   );
   mask-image: linear-gradient(to top, #000 0%, #000 72%, transparent 100%);
 }
-/* Focused: full opacity, fully readable (no fade), scrollable + selectable. */
+/* Focused: float the chat ABOVE the keys (so it is never hidden under them),
+   give the messages a solid backdrop so they are easy to read, and make the log
+   fully scrollable + selectable. Blurring the input drops it back under the keys
+   (z-index + opacity reset) so the keyboard plays through again. */
+.mpp-chat.active {
+  z-index: 50;
+}
 .mpp-chat.active .mpp-chat-log {
   pointer-events: auto;
   opacity: 1;
+  overflow-y: auto;
+  background: rgba(8, 7, 12, 0.86);
+  border: 1px solid var(--mpp-border);
+  border-radius: 10px;
+  padding: 8px 10px;
   -webkit-mask-image: none;
   mask-image: none;
 }
@@ -2491,38 +2558,80 @@ html {
   }
   .mpp-header {
     height: auto;
-    min-height: 52px;
+    min-height: 0;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 5px;
+    padding: 6px 8px;
+  }
+  /* Reclaim two of the four cramped rows: drop the brand + the desktop "now
+     playing" strip, and shrink the controls so the header is a single row. */
+  .mpp-brand {
+    display: none;
+  }
+  .mpp-nowplaying {
+    display: none;
   }
   .mpp-head-right {
     margin-left: 0;
+    gap: 5px;
   }
   .mpp-head-left {
-    gap: 8px;
+    gap: 6px;
+  }
+  .mpp-seg-btn {
+    padding: 5px 11px;
+    font-size: 12px;
   }
   .mpp-hbtn span {
     display: none;
   }
   .mpp-hbtn {
-    padding: 0 10px;
+    height: 33px;
+    padding: 0 8px;
+    gap: 0;
+  }
+  .mpp-hbtn.mpp-icon-only {
+    width: 33px;
+  }
+  .mpp-vol {
+    gap: 4px;
+    padding: 0 2px;
+  }
+  .mpp-vol i {
+    display: none;
   }
   .mpp-vol input[type="range"] {
-    width: 64px;
+    width: 58px;
   }
   .mpp-center {
     justify-content: flex-start;
-    padding: 14px 8px 70px;
-    gap: 12px;
+    padding: 10px 8px 70px;
+    gap: 10px;
   }
-  /* fill the available height across the stacked rows */
+  /* Toolbar to a single row: drop the "Octave" caption and the "Sustain" text,
+     and tighten the gaps so octave / sustain / crown all fit on one line. */
+  .mpp-toolbar {
+    gap: 6px;
+  }
+  .mpp-tlabel {
+    display: none;
+  }
+  .mpp-sustain span {
+    display: none;
+  }
+  .mpp-tgroup {
+    padding: 4px 6px;
+  }
+  /* Fill the available height across the stacked rows, with a small side gutter
+     so the end keys never touch the screen edge. */
   .mpp-keyboard-wrap {
     flex: 1;
     height: auto;
     max-width: none;
     width: 100%;
+    box-sizing: border-box;
+    padding: 0 6px;
     gap: 16px;
   }
   .mpp-row {
