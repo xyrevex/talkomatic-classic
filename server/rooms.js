@@ -66,6 +66,7 @@ function deviceTypeFromUA(ua) {
   if (!ua || typeof ua !== "string") return "unknown";
 
   const s = ua.toLowerCase();
+  const E_READER_RE = /(kindle|pocketbook|kobo|nook|remarkable|noteair|nova[0-9]color|poke[0-9]color|tabultracpro|volta|kf[ot]t|kfsow[ai]|kfjw[ai]|kfthw[ai]|kfapw[ai])/i;
 
   // highest priority
 
@@ -94,11 +95,11 @@ function deviceTypeFromUA(ua) {
     return "tv";
 
   if ((/(ipad|tablet|playbook)/i.test(s) || (/android/i.test(s) && !/mobile/i.test(s))) &&
-    !/(kindle|pocketbook|kobo|nook|remarkable|noteair|nova[0-9]color|poke[0-9]color|tabultracpro|volta|kf[ot]t|kfsow[ai]|kfjw[ai]|kfthw[ai]|kfapw[ai])/i.test(s)
+    !E_READER_RE.test(s)
   ) return "tablet";
 
   // kindle fire models: kfot, kftt, kfsowi, kfjwa, kfjwi, kfthwa, kfthwi, kfapwa, kfapwi
-  if (/(kindle|pocketbook|kobo|nook|remarkable|noteair|nova[0-9]color|poke[0-9]color|tabultracpro|volta|kf[ot]t|kfsow[ai]|kfjw[ai]|kfthw[ai]|kfapw[ai])/i.test(s)) 
+  if (E_READER_RE.test(s)) 
     return "ereader";
 
   if (/(android automotive|androidauto|carplay|tesla|mbux|sync|qtcarbrowser)/i.test(s))
