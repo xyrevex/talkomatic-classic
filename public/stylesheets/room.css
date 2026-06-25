@@ -2436,34 +2436,13 @@ html {
 }
 .mpp-chat-msg {
   font-size: 14px;
-  line-height: 1.4;
-  color: #f4f2fb;
-  /* Glassy chat bubble so messages read clearly over the bright keys and look
-     like a real chat instead of raw floating text. No backdrop blur (kept cheap
-     so a busy chat never costs frames). */
-  align-self: flex-start;
-  width: fit-content;
-  max-width: 90%;
-  padding: 5px 11px;
-  margin: 2px 0;
-  border-radius: 4px 14px 14px 14px;
-  background: rgba(18, 16, 26, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  line-height: 1.45;
+  color: #f0eef8;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 0.85);
   word-break: break-word;
-  animation: mpp-rise 0.25s cubic-bezier(0.19, 1, 0.22, 1);
-}
-/* Your own messages sit on the right in the piano accent, like a chat app. */
-.mpp-chat-self {
-  align-self: flex-end;
-  border-radius: 14px 4px 14px 14px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 152, 0, 0.28),
-    rgba(255, 152, 0, 0.14)
-  );
-  border-color: rgba(255, 183, 77, 0.4);
+  animation: mpp-rise 0.25s ease-out;
 }
 @keyframes mpp-rise {
   from {
