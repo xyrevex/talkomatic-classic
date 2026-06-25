@@ -2676,7 +2676,42 @@ socket.on("dev kick success", (data) => {
 // ── 17. INITIALIZATION ──────────────────────────────────────────────────────
 
 function joinRoom(roomId, accessCode = null) {
-  socket.emit("join room", { roomId, accessCode });
+  // Re-announce identity from this browser before joining. "join room" carries
+  // no name and trusts the server session, but the session is in-memory: a
+  // server restart wipes it (the signed cookie survives, its data does not), so
+  // a plain join after a restart - or any full page load with a lost session,
+  // such as a hard refresh or the reload after being granted mod - would land
+  // as "Anonymous" / "On The Web". The lobby self-heals from localStorage the
+  // same way; the room page must too. Mirrors the reconnect path: announce,
+  // then join once the sign-in is acknowledged (with a timeout fallback so a
+  // missed ack never strands the join).
+  const uname = currentUsername || localStorage.getItem("talkomaticUsername");
+  const uloc =
+    currentLocation ||
+    localStorage.getItem("talkomaticLocation") ||
+    "On The Web";
+
+  if (!uname) {
+    // No saved identity (first visit via a direct/invite link); join as-is and
+    // let the server apply its normal handling.
+    socket.emit("join room", { roomId, accessCode });
+    return;
+  }
+
+  let joined = false;
+  const doJoin = () => {
+    if (joined) return;
+    joined = true;
+    socket.emit("join room", { roomId, accessCode });
+  };
+  const announceThenJoin = () => {
+    socket.once("signin status", doJoin);
+    setTimeout(doJoin, 1500);
+    socket.emit("join lobby", { username: uname, location: uloc });
+  };
+
+  if (socket.connected) announceThenJoin();
+  else socket.once("connect", announceThenJoin);
 }
 
 // On reconnect (an idle/backgrounded tab that dropped, or a server restart)
