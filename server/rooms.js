@@ -61,40 +61,56 @@ function roomCapacity(room) {
     : CONFIG.LIMITS.MAX_ROOM_CAPACITY;
 }
 
+
 function deviceTypeFromUA(ua) {
   if (!ua || typeof ua !== "string") return "unknown";
 
   const s = ua.toLowerCase();
 
-  if (/(talkobot|robot|bot|crawler|spider|slurp|curl|wget|node)/.test(s)) 
+  // highest priority
+
+  if (/(talkobot|robot|crawler|spider|slurp|curl|wget|node)/i.test(s))
     return "bot";
 
-  if (/(oculusbrowser|vision pro|visionos|vive|valve index|windows mixed reality|pico|vr|xr)/.test(s)) 
+  if (/(raspbian|raspberry pi)/i.test(s))
+    return "raspi";
+
+  if (/(projector|projector build|smart projector|sti[0-9]+ build)/i.test(s)) // why? have some whimsy -- why not?
+    return "projector";
+
+  if (/fridge|refrigerator|familyhub|family hub/i.test(s))
+    return "refrigerator";
+
+  if (/(oculusbrowser|vision pro|visionos|vive|valve index|windows mixed reality|pico|vr|xr)/i.test(s))
     return "vr";
 
-  if (/(playstation|ps4|ps5|xbox|nintendo)/.test(s))
+  if (/(playstation|ps[1-5]|xbox|nintendo)/i.test(s))
     return "console";
 
-  if (/(watchos|apple watch|wear os|wearos|galaxy watch|tizen watch)/.test(s))
+  if (/(watchos|apple watch|wear os|wearos|galaxy watch|tizen watch|smartwatch)/i.test(s))
     return "watch";
 
-  if (/(kindle|kobo|nook|silk)/.test(s))
-    return "ereader";
-
-  if (/(smart-?tv|googletv|apple tv|crkey|roku|aft[bms]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/.test(s))
+  if (/(smart-?tv|googletv|apple tv|androidtv|crkey|roku|aft[a-z]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/i.test(s))
     return "tv";
 
-  if (/(android automotive|androidauto|carplay|tesla|mbux|sync|qtcarbrowser)/.test(s))
+  if ((/(ipad|tablet|playbook)/i.test(s) || (/android/i.test(s) && !/mobile/i.test(s))) &&
+    !/(kindle|pocketbook|kobo|nook|remarkable|noteair|nova[0-9]color|poke[0-9]color|tabultracpro|volta|kf[ot]t|kfsow[ai]|kfjw[ai]|kfthw[ai]|kfapw[ai])/i.test(s)
+  ) return "tablet";
+
+  // kindle fire models: kfot, kftt, kfsowi, kfjwa, kfjwi, kfthwa, kfthwi, kfapwa, kfapwi
+  if (/(kindle|pocketbook|kobo|nook|remarkable|noteair|nova[0-9]color|poke[0-9]color|tabultracpro|volta|kf[ot]t|kfsow[ai]|kfjw[ai]|kfthw[ai]|kfapw[ai])/i.test(s)) 
+    return "ereader";
+
+  if (/(android automotive|androidauto|carplay|tesla|mbux|sync|qtcarbrowser)/i.test(s))
     return "car";
 
-  if (/(ipad|tablet|playbook)/.test(s) || (/android/.test(s) && !/mobile/.test(s)))
-    return "tablet";
-
-  if (/(mobi|iphone|ipod|android|blackberry|bb10|iemobile|opera mini|windows phone)/.test(s))
+  if (/(mobi|iphone|ipod|android|blackberry|bb10|iemobile|opera mini|windows phone)/i.test(s))
     return "mobile";
 
-  if (/(windows nt|macintosh|mac os x|linux|cros|x11)/.test(s))
+  if (/(windows|macintosh|mac os|linux|cros|x11)/i.test(s))
     return "desktop";
+
+  // lowest priority
 
   return "unknown";
 }

@@ -1812,7 +1812,7 @@ socket.on("dev hide status", (data) => {
 // Small device-type indicator shown at the left of each user row. Derived from
 // the user agent on the server, purely cosmetic.
 const DEVICE_META = {
-  desktop: { icon: "fa-desktop", title: "Computer" },
+  desktop: { icon: "fa-desktop", title: "Desktop" },
   mobile: { icon: "fa-mobile-screen-button", title: "Mobile" },
   tablet: { icon: "fa-tablet-screen-button", title: "Tablet" },
   tv: { icon: "fa-tv", title: "TV" },
@@ -1821,6 +1821,9 @@ const DEVICE_META = {
   watch: { icon: "fa-clock", title: "Watch" },
   ereader: { icon: "fa-book-atlas", title: "E-Reader" },
   car: { icon: "fa-car", title: "Car" },
+  raspi: { icon: "fa-raspberry-pi", title: "Raspberry Pi" },
+  projector: { icon: "fa-film", title: "Projector" },
+  refrigerator: { icon: "fa-snowflake", title: "Refrigerator" },
   bot: { icon: "fa-robot", title: "Bot" },
   unknown: { icon: "fa-circle-question", title: "Unknown" },
 };
