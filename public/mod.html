@@ -1647,6 +1647,117 @@
       .bc-foot .spacer {
         flex: 1;
       }
+      /* Repeat-offender badge on a ban card */
+      .bc-repeat {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11.5px;
+        font-weight: bold;
+        padding: 3px 10px;
+        border-radius: 20px;
+        white-space: nowrap;
+        background: rgba(255, 84, 104, 0.16);
+        color: var(--red);
+      }
+
+      /* ── Ban & unban history ── */
+      .bh-head {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 30px 0 14px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .bh-head h2 {
+        font-size: 18px;
+        font-weight: normal;
+        color: var(--orange);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .bh-head .sub {
+        color: var(--dim2);
+        font-size: 13px;
+      }
+      .banhist {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .bhrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        border: 1px solid var(--line-soft);
+        border-top: none;
+        background: var(--card);
+      }
+      .banhist .bhrow:first-child {
+        border-top: 1px solid var(--line-soft);
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+      }
+      .banhist .bhrow:last-child {
+        border-bottom-left-radius: 8px;
+        border-bottom-right-radius: 8px;
+      }
+      .bhrow .bh-ic {
+        width: 30px;
+        height: 30px;
+        flex: none;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+      }
+      .bhrow.ban .bh-ic {
+        background: rgba(255, 84, 104, 0.16);
+        color: var(--red);
+      }
+      .bhrow.unban .bh-ic {
+        background: rgba(87, 217, 163, 0.16);
+        color: var(--green);
+      }
+      .bhrow .bh-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .bhrow .bh-line {
+        font-size: 14px;
+        color: var(--txt);
+        word-break: break-word;
+      }
+      .bhrow .bh-line b {
+        color: var(--txt);
+      }
+      .bhrow .bh-line .verb-ban {
+        color: var(--red);
+        font-weight: bold;
+      }
+      .bhrow .bh-line .verb-unban {
+        color: var(--green);
+        font-weight: bold;
+      }
+      .bhrow .bh-sub {
+        font-size: 12.5px;
+        color: var(--dim2);
+        word-break: break-word;
+      }
+      .bhrow .bh-when {
+        font-size: 12.5px;
+        color: var(--dim2);
+        white-space: nowrap;
+      }
 
       /* ── Responsive ── */
       @media (max-width: 768px) {
@@ -1757,7 +1868,7 @@
             <i class="fas fa-scale-balanced"></i> Appeals
             <span class="ni-badge" id="appealsBadge">0</span>
           </button>
-          <button class="nav-item" data-tab="bans" data-dev>
+          <button class="nav-item" data-tab="bans" data-min2>
             <i class="fas fa-ban"></i> Ban list
             <span class="ni-badge" id="bansBadge">0</span>
           </button>
@@ -1945,6 +2056,11 @@
             </div>
           </div>
           <div id="bansList" class="cards"></div>
+          <div class="bh-head">
+            <h2><i class="fas fa-clock-rotate-left"></i> Ban &amp; unban history</h2>
+            <span class="sub" id="banHistSub">Who banned or unbanned whom</span>
+          </div>
+          <div id="banHistoryList" class="banhist"></div>
         </section>
 
         <!-- Mods -->
@@ -2166,6 +2282,6 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/staff-ui.js?v=1.5.0"></script>
-    <script src="js/mod.js?v=3.8.0"></script>
+    <script src="js/mod.js?v=3.9.0"></script>
   </body>
 </html>

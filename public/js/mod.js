@@ -569,6 +569,7 @@
 
   // ── Ban list tab (dev only) ──
   let bans = [];
+  let banHistory = []; // ban/unban events (Bans tab history feed)
   let bansTimer = null;
   function fmtRemaining(b) {
     if (b.permanent) return null;
@@ -666,7 +667,9 @@
 
   function buildBanCard(b, isDev) {
     const card = divc("bancard" + (b.permanent ? " perm" : ""));
-    card.dataset.ip = b.ip;
+    // Keyed by the opaque ref (mods never receive the IP), used by the live
+    // countdown timer to find this ban again.
+    card.dataset.ref = b.ref || "";
 
     // Header: avatar, name, who/when/where meta, live countdown pill
     const head = divc("bc-head");
@@ -691,6 +694,13 @@
       const placed = span(null, "placed " + relTime(b.ts));
       placed.title = fmtTime(b.ts);
       meta.appendChild(placed);
+    }
+    // Repeat-offender count: how many times this IP has ever been banned.
+    if (b.bans && b.bans >= 2) {
+      const rep = span("bc-repeat");
+      rep.appendChild(icon("fa-rotate-right"));
+      rep.appendChild(document.createTextNode(" Banned " + b.bans + " times"));
+      meta.appendChild(rep);
     }
     idc.appendChild(meta);
     head.appendChild(idc);
@@ -739,17 +749,20 @@
     unban.appendChild(icon("fa-unlock"));
     unban.appendChild(document.createTextNode(" Unban"));
     unban.addEventListener("click", async () => {
+      // A dev sends the IP; a mod (no IP) sends the opaque ref. Send both - the
+      // server uses whichever it gets.
+      const payload = { ip: b.ip, ref: b.ref };
       if (!window.StaffUI) {
-        socket.emit("dev unblock ip", { ip: b.ip });
+        socket.emit("dev unblock ip", payload);
         return;
       }
+      const who = (b.label || "this user") + (b.ip ? " (" + b.ip + ")" : "");
       const ok = await StaffUI.confirm({
         title: "Unban",
-        message:
-          "Unblock " + (b.label ? b.label + " (" + b.ip + ")" : b.ip) + "?",
+        message: "Unblock " + who + "?",
         confirmText: "Unban",
       });
-      if (ok) socket.emit("dev unblock ip", { ip: b.ip });
+      if (ok) socket.emit("dev unblock ip", payload);
     });
     foot.appendChild(unban);
     card.appendChild(foot);
@@ -779,8 +792,8 @@
       if (tab !== "bans") return;
       let anyLive = false;
       document.querySelectorAll("#bansList .pill[data-ttl]").forEach((pill) => {
-        const ip = pill.closest(".bancard")?.dataset.ip;
-        const b = bans.find((x) => x.ip === ip);
+        const ref = pill.closest(".bancard")?.dataset.ref;
+        const b = bans.find((x) => x.ref === ref);
         if (!b || b.permanent) return;
         anyLive = true;
         pill.textContent = fmtRemaining(b) || "expiring";
@@ -790,6 +803,72 @@
         bansTimer = null;
       }
     }, 1000);
+  }
+
+  // Ban / unban history: who banned or unbanned whom, newest first. The IP only
+  // appears for devs (the server omits it for mods).
+  function renderBanHistory() {
+    const wrap = $("banHistoryList");
+    if (!wrap) return;
+    wrap.textContent = "";
+    const sub = $("banHistSub");
+    if (sub)
+      sub.textContent = banHistory.length
+        ? banHistory.length +
+          " recent event" +
+          (banHistory.length === 1 ? "" : "s")
+        : "No ban activity yet";
+    if (!banHistory.length) {
+      wrap.appendChild(
+        emptyBox("fa-clock-rotate-left", "No ban or unban activity yet."),
+      );
+      return;
+    }
+    banHistory.forEach((e) => {
+      const isUnban = e.action === "unban";
+      const row = divc("bhrow " + (isUnban ? "unban" : "ban"));
+      const ic = divc("bh-ic");
+      ic.appendChild(icon(isUnban ? "fa-unlock" : "fa-ban"));
+      row.appendChild(ic);
+
+      const main = divc("bh-main");
+      const line = divc("bh-line");
+      const who = document.createElement("b");
+      who.textContent = e.by || "A staff member";
+      line.appendChild(who);
+      line.appendChild(document.createTextNode(" "));
+      line.appendChild(
+        span(
+          isUnban ? "verb-unban" : "verb-ban",
+          isUnban ? "unbanned" : "banned",
+        ),
+      );
+      line.appendChild(document.createTextNode(" "));
+      const target = document.createElement("b");
+      target.textContent = e.name || e.ip || "a user";
+      line.appendChild(target);
+      if (!isUnban && e.duration) {
+        line.appendChild(document.createTextNode(" "));
+        line.appendChild(span(null, durationLabel(e.duration)));
+      }
+      main.appendChild(line);
+
+      const subBits = [];
+      if (e.ip) subBits.push("IP " + e.ip); // present for devs only
+      if (e.reason) subBits.push('"' + e.reason + '"');
+      if (subBits.length) {
+        const s = divc("bh-sub");
+        s.textContent = subBits.join("   ·   ");
+        main.appendChild(s);
+      }
+      row.appendChild(main);
+
+      const when = span("bh-when", relTime(e.at));
+      when.title = fmtTime(e.at);
+      row.appendChild(when);
+
+      wrap.appendChild(row);
+    });
   }
 
   // ── Moderators tab (dev only) ──
@@ -2190,6 +2269,7 @@
     if (name === "activity") flushPending();
     if (name === "bans") {
       socket.emit("dev list blocks");
+      socket.emit("staff get ban history");
       startBanTimer();
     }
     if (name === "mods") socket.emit("dev list mod keys");
@@ -2217,8 +2297,9 @@
     document.querySelectorAll("[data-min2]").forEach((n) => {
       n.style.display = fullMod ? "" : "none";
     });
-    if (!isDev && (tab === "bans" || tab === "mods" || tab === "sessions"))
+    if (!isDev && (tab === "mods" || tab === "sessions"))
       switchTab("activity");
+    if (!fullMod && tab === "bans") switchTab("activity");
     if (!fullMod && tab === "applications") switchTab("activity");
     if (!fullMod && tab === "reports") switchTab("activity");
     if (!fullMod && tab === "invites") switchTab("activity");
@@ -2264,11 +2345,12 @@
     // Populate the left-panel counts immediately, not only when a tab is opened.
     const fullMod = me && (me.role === "dev" || (me.modLevel || 0) >= 2);
     if (me && me.role === "dev") {
-      socket.emit("dev list blocks");
       socket.emit("dev list mod keys");
       socket.emit("dev get sessions");
     }
     if (fullMod) {
+      socket.emit("dev list blocks");
+      socket.emit("staff get ban history");
       socket.emit("mod applications list");
       socket.emit("staff get reports");
       socket.emit("staff get appeals");
@@ -2305,6 +2387,11 @@
       return (a.expiry || 0) - (b.expiry || 0);
     });
     renderBans();
+  });
+
+  socket.on("staff ban history", (list) => {
+    banHistory = Array.isArray(list) ? list : [];
+    renderBanHistory();
   });
 
   socket.on("dev mod keys", (list) => {
@@ -2471,9 +2558,10 @@
     .forEach((n) =>
       n.addEventListener("click", () => switchTab(n.dataset.tab)),
     );
-  $("bansRefresh").addEventListener("click", () =>
-    socket.emit("dev list blocks"),
-  );
+  $("bansRefresh").addEventListener("click", () => {
+    socket.emit("dev list blocks");
+    socket.emit("staff get ban history");
+  });
   $("modsRefresh").addEventListener("click", () =>
     socket.emit("dev list mod keys"),
   );
