@@ -4311,6 +4311,7 @@ function renderSpectate(data) {
   currentRoomId = data.roomId;
   currentRoomName = data.roomName;
   currentRoomLayout = data.layout || currentRoomLayout;
+  currentRoomCreatedAt = data.createdAt || 0;
 
   // Carry the spectator's role through so the full staff panel is available
   // while watching: devs keep every dev power (including Max room size), mods
@@ -4321,10 +4322,12 @@ function renderSpectate(data) {
 
   const rt = document.querySelector(".second-navbar .room-type");
   const rn = document.querySelector(".second-navbar .room-name");
+  const ru = document.querySelector(".second-navbar .room-uptime");
   const rid = document.querySelector(".second-navbar .room-id");
   if (rt) rt.textContent = `${data.roomType || "public"} room`;
   if (rn) rn.textContent = data.roomName || "*";
-  if (rid) rid.textContent = data.roomId || "*";
+  if (ru) ru.textContent = currentRoomCreatedAt > 0 ? msToTime(Date.now() - currentRoomCreatedAt) : "";
+  if (rid) rid.textContent = data.roomId ? "Room ID: " + data.roomId : "*";
   const c = document.querySelector(".chat-container");
   if (c) {
     c.innerHTML = "";

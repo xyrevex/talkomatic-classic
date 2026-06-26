@@ -4147,6 +4147,8 @@ function registerSocketHandlers() {
         socket.join(roomId);
         socket.spectating = roomId;
         socket.roomId = roomId;
+
+        const createdAt = room.createdAt || room.lastActiveTime || 0;
         socket.emit("spectate joined", {
           roomId: room.id,
           roomName: room.name,
@@ -4161,6 +4163,8 @@ function registerSocketHandlers() {
           users: filterUsersForSocket(room.users || [], socket),
           votes: filterVotesForSocket(room, socket),
           currentMessages: filterCurrentMessagesForSocket(room, socket),
+          createdAt: createdAt,
+          uptime: Date.now() - createdAt
         });
         sendDevRoomContext(roomId);
         logStaff(socket, "spectate", null, room);
