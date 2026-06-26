@@ -2380,6 +2380,23 @@ socket.on("mod application result", (d) => {
 socket.on("mod application status", (d) => {
   myAppStatus = d && d.has ? d : null;
   updateModApplyLink();
+  // A live review (the user is in the lobby when staff decide) gets a one-time
+  // notification, the same way a lifted ban does. The on-connect push has no
+  // `live` flag, so a page load never re-toasts an old decision. The full
+  // reviewer message is always available behind the "Check status" link.
+  if (d && d.live && d.has) {
+    if (d.status === "approved")
+      lobbyNotify("Your moderator application was approved!", "success", {
+        timeout: 10000,
+      });
+    else if (d.status === "rejected")
+      lobbyNotify(
+        "Your moderator application was declined." +
+          (d.reason ? " Reason: " + d.reason : " Open Check status for details."),
+        "info",
+        { timeout: 12000 },
+      );
+  }
 });
 
 // ── Invite leaderboard: a custom, large, centered modal with two tabs ───────

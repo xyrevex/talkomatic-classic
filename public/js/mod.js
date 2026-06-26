@@ -319,6 +319,15 @@
     } else {
       metaBit(meta, "was:", e.prevUsername);
       metaBit(meta, "location:", e.location);
+      // Show the prior location too when a rename changed it, so the location
+      // history is visible on the entry itself, not only in the trace summary.
+      metaBit(
+        meta,
+        "was location:",
+        e.prevLocation && e.prevLocation !== e.location
+          ? e.prevLocation
+          : null,
+      );
       metaBit(meta, "IP:", e.ip, "ip");
       metaBit(meta, "user:", e.userId, null, e.userId);
       metaBit(meta, "by:", e.by);
@@ -475,6 +484,8 @@
     const sum = span("sum");
     sum.appendChild(document.createTextNode("   names: "));
     sum.appendChild(boldList(s.names));
+    sum.appendChild(document.createTextNode("   locations: "));
+    sum.appendChild(boldList(s.locations));
     sum.appendChild(document.createTextNode("   IPs: "));
     sum.appendChild(boldList(s.ips));
     sum.appendChild(document.createTextNode("   actions against them: "));
@@ -497,19 +508,28 @@
   }
   function userSummary(uid) {
     const names = new Set(),
-      ips = new Set();
+      ips = new Set(),
+      locations = new Set();
     let actionsAgainst = 0;
     for (const e of entries) {
       if (e.type === "identity" && e.userId === uid) {
         if (e.username) names.add(e.username);
         if (e.prevUsername) names.add(e.prevUsername);
         if (e.ip) ips.add(e.ip);
+        // Location history: every place this user has set on sign-in or rename.
+        if (e.location) locations.add(e.location);
+        if (e.prevLocation) locations.add(e.prevLocation);
       } else if (e.type === "action") {
         const t = parseTarget(e.target);
         if (t && t.uid === uid) actionsAgainst++;
       }
     }
-    return { names: [...names], ips: [...ips], actionsAgainst };
+    return {
+      names: [...names],
+      ips: [...ips],
+      locations: [...locations],
+      actionsAgainst,
+    };
   }
 
   function renderRoster(roster) {
@@ -1954,7 +1974,7 @@
             fields: [
               {
                 name: "value",
-                label: "Reason (optional, kept private)",
+                label: "Message to the applicant (optional, they will see it)",
                 type: "text",
                 maxLength: 300,
               },

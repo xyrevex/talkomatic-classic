@@ -5127,6 +5127,15 @@ function registerSocketHandlers() {
           }
         } else if (decision === "reject") {
           applications.setStatus(id, "rejected", reviewer, reason);
+          // Notify the applicant live if they are online, so they learn the
+          // outcome and the reviewer's message without waiting to reconnect -
+          // the same idea as the ban screen reloading when a ban is lifted.
+          // (Approvals already signal the user via the "you are now mod" key
+          // delivery, so only the reject path needs this push.)
+          const live = Object.assign({ live: true }, appStatusPayload(app.deviceId));
+          for (const [, s] of io().sockets.sockets)
+            if (s.deviceId === app.deviceId && !s.isDev && !s.isMod)
+              s.emit("mod application status", live);
           logStaff(
             socket,
             "reject mod application",
