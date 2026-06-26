@@ -187,7 +187,7 @@ const helmetMiddleware = helmet({
         "https://cdnjs.cloudflare.com",
         "https://classic.talkomatic.co",
       ],
-      connectSrc: ["'self'", "https://classic.talkomatic.co"],
+      connectSrc: ["'self'", "https://classic.talkomatic.co", "https://raw.githubusercontent.com"],
       mediaSrc: ["'self'", "data:"],
       frameAncestors: ["'self'", "*"],
       frameSrc: ["'none'"],

@@ -466,14 +466,144 @@ let currentEmoteInfo = null;
 
 async function loadEmotes() {
   try {
-    const resp = await fetch("/js/emojiList.json?v=1.0.1");
+    const resp = await fetch(`https://raw.githubusercontent.com/ZackiBoiz/Multiplayer-Piano-Optimizations/refs/heads/main/emotes/meta.jsonc?_=${Date.now()}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    emoteList = await resp.json();
+    const pairs = parseJSONC(await resp.text());
+    emoteList = Object.fromEntries(Object.entries(pairs)
+      .map(([name, ext]) => [name, `https://raw.githubusercontent.com/ZackiBoiz/Multiplayer-Piano-Optimizations/refs/heads/main/emotes/assets/${name}.${ext}`]
+      ));
     console.log("Emotes loaded:", Object.keys(emoteList).length);
   } catch (err) {
     console.error("Error loading emotes:", err);
     emoteList = {};
   }
+}
+
+function parseJSONC(input) {
+  const json = stripJSONC(input);
+  return JSON.parse(json);
+}
+
+function stripJSONC(input) {
+  let out = "";
+  let i = 0;
+
+  let inString = false;
+  let stringQuote = "";
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  while (i < input.length) {
+    const ch = input[i];
+    const next = input[i + 1];
+
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+        out += ch;
+      }
+      i++;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+      } else {
+        i++;
+      }
+      continue;
+    }
+
+    if (inString) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === stringQuote) {
+        inString = false;
+      }
+      i++;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringQuote = ch;
+      out += ch;
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i += 2;
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+
+    out += ch;
+    i++;
+  }
+
+  return removeTrailingCommas(out);
+}
+
+function removeTrailingCommas(input) {
+  let out = "";
+  let i = 0;
+
+  let inString = false;
+  let stringQuote = "";
+  let escaped = false;
+
+  while (i < input.length) {
+    const ch = input[i];
+
+    if (inString) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === stringQuote) {
+        inString = false;
+      }
+      i++;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringQuote = ch;
+      out += ch;
+      i++;
+      continue;
+    }
+
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < input.length && /\s/.test(input[j])) j++;
+
+      if (input[j] === "}" || input[j] === "]") {
+        i++;
+        continue;
+      }
+    }
+
+    out += ch;
+    i++;
+  }
+
+  return out;
 }
 
 // Converts :code: tokens in an element to emote <img> elements, preserving
@@ -546,19 +676,112 @@ function findEmoteAtCursor() {
   return null;
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function findSubsequencePositions(source, query) {
+  const positions = [];
+  let startIndex = 0;
+
+  for (const ch of query) {
+    const idx = source.indexOf(ch, startIndex);
+    if (idx === -1) return null;
+    positions.push(idx);
+    startIndex = idx + 1;
+  }
+
+  return positions;
+}
+
+function buildHighlightedText(text, positions, contiguousStart = null, contiguousEnd = null) {
+  if (!positions || positions.length === 0) return escapeHtml(text);
+
+  let out = "";
+  const posSet = new Set(positions);
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = escapeHtml(text[i]);
+    if (contiguousStart !== null && contiguousEnd !== null) { // cleaner highlighting than a <strong> on every char
+      if (i === contiguousStart) out += "<strong style='color: #ff9800'>";
+      out += ch;
+      if (i === contiguousEnd - 1) out += "</strong>";
+      continue;
+    }
+
+    if (posSet.has(i)) out += `<strong style='color: #ff9800'>${ch}</strong>`;
+    else out += ch;
+  }
+
+  return out;
+}
+
+function getEmoteAutocompleteMatches(prefix) {
+  const q = prefix.toLowerCase();
+  const results = [];
+
+  for (const code of Object.keys(emoteList)) {
+    const lower = code.toLowerCase();
+
+    if (lower === q) {
+      results.push({
+        code,
+        bucket: 0,
+        html: buildHighlightedText(code, [0], 0, q.length),
+      });
+      continue;
+    }
+
+    const substringPos = lower.indexOf(q);
+    if (substringPos !== -1) {
+      const positions = Array.from({ length: q.length }, (_, i) => substringPos + i);
+      results.push({
+        code,
+        bucket: 1,
+        html: buildHighlightedText(code, positions, substringPos, substringPos + q.length),
+      });
+      continue;
+    }
+
+    const subsequencePositions = findSubsequencePositions(lower, q);
+    if (subsequencePositions) {
+      results.push({
+        code,
+        bucket: 2,
+        html: buildHighlightedText(code, subsequencePositions),
+      });
+    }
+  }
+
+  results.sort((a, b) => { // sorting by buckets
+    return a.bucket - b.bucket ||
+      a.code.length - b.code.length ||
+      a.code.localeCompare(b.code)
+  });
+
+  return results;
+}
+
 function showAutocomplete(prefix) {
   if (!prefix || prefix.length < 1) {
     hideAutocomplete();
     return;
   }
-  filteredEmotes = Object.keys(emoteList)
-    .filter((c) => c.toLowerCase().startsWith(prefix.toLowerCase()))
-    .slice(0, 10);
-  if (filteredEmotes.length === 0) {
+
+  const matches = getEmoteAutocompleteMatches(prefix);
+  if (matches.length === 0) {
     hideAutocomplete();
     return;
   }
+
+  filteredEmotes = matches;
   currentEmoteInfo = findEmoteAtCursor();
+
   if (!emoteAutocomplete) {
     emoteAutocomplete = document.getElementById("emoteAutocomplete");
     if (!emoteAutocomplete) {
@@ -568,36 +791,45 @@ function showAutocomplete(prefix) {
       document.body.appendChild(emoteAutocomplete);
     }
   }
+
   const sel = window.getSelection();
   if (sel.rangeCount === 0) {
     hideAutocomplete();
     return;
   }
   const rect = sel.getRangeAt(0).getBoundingClientRect();
+
   emoteAutocomplete.innerHTML = "";
   const header = document.createElement("div");
   header.className = "emote-autocomplete-header";
   header.textContent = "Emoticons";
   emoteAutocomplete.appendChild(header);
+
   const list = document.createElement("div");
   list.className = "emote-autocomplete-list";
-  filteredEmotes.forEach((code, i) => {
+
+  filteredEmotes.forEach((match, i) => {
     const item = document.createElement("div");
     item.className =
       "emote-autocomplete-item" + (i === selectedEmoteIndex ? " selected" : "");
+
     const img = document.createElement("img");
-    img.src = emoteList[code];
-    img.alt = `:${code}:`;
+    img.src = EMOTE_IMAGE_PLACEHOLDER;
+    img.dataset.src = emoteList[match.code];
+    img.alt = `:${match.code}:`;
+    img.decoding = "async";
+
     const span = document.createElement("span");
-    span.textContent = code;
+    span.innerHTML = match.html;
     span.style.fontFamily = "monospace";
+
     item.appendChild(img);
     item.appendChild(span);
     item.addEventListener("mousedown", (e) => {
       e.preventDefault();
       e.stopPropagation();
       const info = currentEmoteInfo ? { ...currentEmoteInfo } : null;
-      setTimeout(() => insertEmote(code, info), 0);
+      setTimeout(() => insertEmote(match.code, info), 0);
     });
     item.addEventListener("mouseover", () => {
       selectedEmoteIndex = i;
@@ -605,16 +837,20 @@ function showAutocomplete(prefix) {
     });
     list.appendChild(item);
   });
+
+  const loadVisibleImages = () => hydrateVisibleEmoteImages(list);
+  list.addEventListener("scroll", loadVisibleImages, { passive: true });
+  window.addEventListener("resize", loadVisibleImages, { passive: true });
+
   emoteAutocomplete.appendChild(list);
   emoteAutocomplete.style.top = `${rect.bottom + window.scrollY + 5}px`;
   emoteAutocomplete.style.left = `${rect.left + window.scrollX}px`;
   emoteAutocomplete.style.display = "block";
   autocompleteActive = true;
   currentEmotePrefix = prefix;
-  if (filteredEmotes.length > 0 && selectedEmoteIndex < 0) {
-    selectedEmoteIndex = 0;
-    updateSelectedEmote();
-  }
+  selectedEmoteIndex = 0;
+  updateSelectedEmote();
+  requestAnimationFrame(loadVisibleImages);
 }
 
 function hideAutocomplete() {
@@ -649,7 +885,7 @@ function handleEmoteNavigation(e) {
         selectedEmoteIndex >= 0 &&
         selectedEmoteIndex < filteredEmotes.length
       ) {
-        insertEmote(filteredEmotes[selectedEmoteIndex], currentEmoteInfo);
+        insertEmote(filteredEmotes[selectedEmoteIndex].code, currentEmoteInfo);
         return true;
       }
       break;
@@ -691,16 +927,30 @@ function ensureCaretInTextNode() {
   }
 }
 
+function isValidEmoteInfo(info) {
+  return !!(
+    info &&
+    info.node &&
+    info.node.isConnected &&
+    chatInput &&
+    chatInput.contains(info.node)
+  );
+}
+
 function insertEmote(emoteCode, emoteInfo) {
   if (!chatInput) return;
   chatInput.focus();
   const html = `<img src="${emoteList[emoteCode]}" alt=":${emoteCode}:" title=":${emoteCode}:" class="emote" data-emote-code="${emoteCode}">`;
   try {
-    if (emoteInfo && emoteInfo.node && emoteInfo.node.parentNode) {
+    const targetInfo = isValidEmoteInfo(emoteInfo)
+      ? emoteInfo
+      : findEmoteAtCursor();
+
+    if (targetInfo && targetInfo.node && targetInfo.node.parentNode) {
       const sel = window.getSelection();
       const r = document.createRange();
-      r.setStart(emoteInfo.node, emoteInfo.startPos);
-      r.setEnd(emoteInfo.node, emoteInfo.endPos);
+      r.setStart(targetInfo.node, targetInfo.startPos);
+      r.setEnd(targetInfo.node, targetInfo.endPos);
       sel.removeAllRanges();
       sel.addRange(r);
     }
@@ -854,6 +1104,35 @@ function applySelfFilter() {
   }
 }
 
+
+const EMOTE_IMAGE_PLACEHOLDER =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="; // blank
+
+function isEmoteImageVisible(img, container) {
+  if (!img || !container) return false;
+  const itemRect = img.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+
+  return (
+    itemRect.bottom > containerRect.top &&
+    itemRect.top < containerRect.bottom * 2 && // be lenient and lazy-load emotes that are just out of reach (seamless)
+    itemRect.right > containerRect.left &&
+    itemRect.left < containerRect.right
+  );
+}
+
+function hydrateVisibleEmoteImages(dropdown) {
+  if (!dropdown) return;
+  const images = dropdown.querySelectorAll("img[data-src]");
+  images.forEach((img) => {
+    if (!isEmoteImageVisible(img, dropdown)) return;
+    const src = img.dataset.src;
+    if (!src) return;
+    img.src = src;
+    img.removeAttribute("data-src");
+  });
+}
+
 // Builds the Emoticons button beside .room-type (wrapped in a group so the
 // room type display is never replaced) and the emote picker dropdown
 function createEmotesDropdown() {
@@ -878,8 +1157,10 @@ function createEmotesDropdown() {
     const item = document.createElement("div");
     item.className = "emote-item";
     const img = document.createElement("img");
-    img.src = url;
+    img.src = EMOTE_IMAGE_PLACEHOLDER;
+    img.dataset.src = url;
     img.alt = `:${code}:`;
+    img.decoding = "async";
     const name = document.createElement("span");
     name.textContent = code;
     item.appendChild(img);
@@ -898,6 +1179,10 @@ function createEmotesDropdown() {
     dropdown.appendChild(item);
   });
 
+  const loadVisibleImages = () => hydrateVisibleEmoteImages(dropdown);
+  dropdown.addEventListener("scroll", loadVisibleImages, { passive: true });
+  window.addEventListener("resize", loadVisibleImages, { passive: true });
+
   button.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -910,6 +1195,7 @@ function createEmotesDropdown() {
       dropdown.style.top = `${rect.bottom + window.scrollY + 5}px`;
       dropdown.style.left = `${rect.left + window.scrollX}px`;
       dropdown.style.display = "flex";
+      requestAnimationFrame(loadVisibleImages);
       if (chatInput) setTimeout(() => chatInput.focus(), 0);
     }
   });
