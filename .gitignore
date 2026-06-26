@@ -25,6 +25,7 @@ mod-applications.json
 reports.json
 blocklist.json
 warnings.json
+appeals.json
 
 # Dependency directories
 node_modules/

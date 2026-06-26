@@ -25,6 +25,7 @@ const {
   createErrorResponse,
   sendErrorResponse,
   promisifySessionSave,
+  sanitizeMessage,
 } = require("./server/state");
 const {
   antibotMiddleware,
@@ -42,6 +43,7 @@ const {
 } = require("./server/security");
 const rooms = require("./server/rooms");
 const roles = require("./server/roles");
+const appeals = require("./server/appeals");
 
 // ── Global Error Handlers ───────────────────────────────────────────────────
 
@@ -69,6 +71,9 @@ function gracefulFlush() {
   } catch (e) {}
   try {
     require("./server/reports").flushSync();
+  } catch (e) {}
+  try {
+    require("./server/appeals").flushSync();
   } catch (e) {}
   try {
     require("./server/blocklist").flushSync();
@@ -326,6 +331,10 @@ io.use((socket, next) => {
           permanent: block.expiry >= Number.MAX_SAFE_INTEGER,
           expiry: block.expiry,
           reason: block.reason || null,
+          // Who placed the ban and when, so the ban screen can name the staff
+          // member. Only the staff label is exposed, never the raw IP.
+          by: block.by || null,
+          bannedAt: (block && typeof block === "object" && block.ts) || null,
         };
         return next(err);
       }
@@ -521,6 +530,69 @@ app.get(`${API}/me`, (req, res) => {
       isBot: !!req.isBot,
     });
   else res.json({ isSignedIn: false, isBot: !!req.isBot });
+});
+
+// Ban appeal, submitted straight from the ban screen. The IP block only rejects
+// socket connections, so a banned user can still reach this HTTP route. We only
+// accept an appeal from an IP that is actually blocked, capture a snapshot of
+// the ban it contests, and surface it to staff in the Appeals tab. One open
+// appeal per IP, so the inbox cannot be flooded.
+app.post(`${API}/appeal`, (req, res) => {
+  try {
+    const ip = getClientIP(req);
+    const block = state.blockedIPs.get(ip);
+    const expiry = block && typeof block === "object" ? block.expiry : block;
+    const blocked =
+      !!block &&
+      (!expiry ||
+        expiry === Number.MAX_SAFE_INTEGER ||
+        Date.now() < expiry);
+    if (!blocked) return res.json({ ok: false, code: "not_banned" });
+
+    const message = sanitizeMessage(
+      typeof req.body?.message === "string" ? req.body.message : "",
+    ).slice(0, 1000);
+    if (message.trim().length < 3)
+      return res.json({ ok: false, code: "too_short" });
+
+    const rawDevice =
+      typeof req.body?.deviceId === "string" ? req.body.deviceId : "";
+    const deviceId = /^[a-f0-9-]{8,64}$/i.test(rawDevice)
+      ? rawDevice.toLowerCase()
+      : null;
+
+    // Identity comes from the session the banned browser still carries, so a
+    // moderator can trace the appealing user's activity by their userId.
+    const name = req.session?.username || null;
+    const userId = req.session?.userId || null;
+    const b = block && typeof block === "object" ? block : {};
+
+    const result = appeals.submit({
+      ip,
+      deviceId,
+      userId,
+      name,
+      message,
+      ban: {
+        by: b.by || null,
+        label: b.label || null,
+        reason: b.reason || null,
+        expiry: b.expiry || 0,
+        permanent: (b.expiry || 0) >= Number.MAX_SAFE_INTEGER,
+        ts: b.ts || null,
+      },
+    });
+    if (!result.ok) return res.json(result);
+    try {
+      rooms.announceAppeal(result.id);
+    } catch (e) {
+      console.error("announceAppeal failed:", e);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("appeal route error:", e);
+    res.status(500).json({ ok: false, code: "server_error" });
+  }
 });
 
 // Emoji list, cached in memory for an hour

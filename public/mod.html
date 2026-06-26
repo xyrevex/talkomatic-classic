@@ -940,6 +940,165 @@
         color: var(--red);
         border-color: var(--red);
       }
+      /* What the reported user had typed when they were reported. Squared,
+         orange-accented stripe so it reads as a verbatim snapshot. */
+      .rc-typed {
+        margin: 0 18px 14px;
+        padding: 11px 13px;
+        background: var(--panel2);
+        border: 1px solid var(--line-soft);
+        border-left: 3px solid var(--orange);
+        border-radius: 0;
+      }
+      .rc-typed .lbl {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 10.5px;
+        font-weight: bold;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--orange);
+        margin-bottom: 6px;
+      }
+      .rc-typed .txt {
+        color: var(--txt);
+        font-size: 13.5px;
+        line-height: 1.5;
+        word-break: break-word;
+        white-space: pre-wrap;
+        font-family: "Courier New", monospace;
+      }
+      .rc-typed .txt.none {
+        color: var(--dim2);
+        font-style: italic;
+        font-family: inherit;
+      }
+
+      /* ── Appeals ── */
+      .appealcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--amber);
+        overflow: hidden;
+        margin-bottom: 16px;
+        transition: border-color 0.2s ease;
+      }
+      .appealcard:hover {
+        border-color: var(--orange);
+      }
+      .appealcard.resolved {
+        border-left-color: var(--line);
+        opacity: 0.85;
+      }
+      .ap-head {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 15px 17px 12px;
+        flex-wrap: wrap;
+      }
+      .ap-head .avatar {
+        width: 46px;
+        height: 46px;
+        font-size: 19px;
+        border-radius: 10px;
+      }
+      .ap-id {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1;
+      }
+      .ap-kicker {
+        font-size: 10.5px;
+        font-weight: bold;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: var(--amber);
+      }
+      .ap-id .nm {
+        font-size: 19px;
+        font-weight: bold;
+        color: var(--txt);
+        word-break: break-word;
+        line-height: 1.2;
+      }
+      .ap-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 3px;
+        color: var(--dim2);
+        font-size: 12.5px;
+      }
+      .ap-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 10px;
+        padding: 0 17px 4px;
+      }
+      .ap-box {
+        background: var(--panel2);
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        padding: 11px 13px;
+      }
+      .ap-box.contest {
+        border-left: 3px solid var(--red);
+        border-radius: 0;
+      }
+      .ap-box .lbl {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        font-weight: bold;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        color: var(--orange);
+        margin-bottom: 5px;
+      }
+      .ap-box.contest .lbl {
+        color: var(--red);
+      }
+      .ap-box .val {
+        color: var(--txt);
+        font-size: 13.5px;
+        line-height: 1.5;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .ap-box .val.none {
+        color: var(--dim2);
+        font-style: italic;
+      }
+      .ap-foot {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px 17px;
+        margin-top: 8px;
+        border-top: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .ap-info {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 12.5px;
+        color: var(--dim2);
+        flex: 1;
+        min-width: 0;
+      }
+      .ap-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
 
       /* ── Invite integrity ── */
       .verdict {
@@ -1594,6 +1753,10 @@
             <i class="fas fa-user-pen"></i> Applications
             <span class="ni-badge" id="appsBadge">0</span>
           </button>
+          <button class="nav-item" data-tab="appeals" data-min2>
+            <i class="fas fa-scale-balanced"></i> Appeals
+            <span class="ni-badge" id="appealsBadge">0</span>
+          </button>
           <button class="nav-item" data-tab="bans" data-dev>
             <i class="fas fa-ban"></i> Ban list
             <span class="ni-badge" id="bansBadge">0</span>
@@ -1742,6 +1905,32 @@
             </div>
           </div>
           <div id="appsList" class="cards"></div>
+        </section>
+
+        <!-- Appeals -->
+        <section id="tab-appeals" class="panel">
+          <div class="panel-head">
+            <h1><i class="fas fa-scale-balanced"></i> Ban appeals</h1>
+            <span class="sub" id="appealsSub">
+              Appeals submitted from the ban screen
+            </span>
+            <div class="ph-actions">
+              <button id="appealsRefresh" class="btn sm">
+                <i class="fas fa-arrows-rotate"></i> Refresh
+              </button>
+            </div>
+          </div>
+          <p class="reports-note">
+            <i class="fas fa-circle-info"></i>
+            <span>
+              Each card is one banned user asking to be unbanned. It shows the
+              ban they are contesting (who placed it and why) next to their
+              message. Click their name to trace their activity. Lift the ban to
+              unblock the IP and accept the appeal, or dismiss it to keep the
+              ban. Lifting a ban is dev-only.
+            </span>
+          </p>
+          <div id="appealsList" class="cards"></div>
         </section>
 
         <!-- Bans -->
@@ -1977,6 +2166,6 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/staff-ui.js?v=1.5.0"></script>
-    <script src="js/mod.js?v=3.6.0"></script>
+    <script src="js/mod.js?v=3.7.0"></script>
   </body>
 </html>

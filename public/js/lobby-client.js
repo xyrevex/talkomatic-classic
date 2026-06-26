@@ -666,40 +666,74 @@ function showBanScreen(info) {
   banScreenShown = true;
   const DISCORD = "https://discord.gg/N7tJznESrE";
 
+  // Themed to match the rest of Talkomatic (talkoSS, #202020/#000/#616161 with
+  // the #ff9800 orange accent). The accent strips are squared (radius 0).
   if (!document.getElementById("banScreenStyles")) {
     const style = document.createElement("style");
     style.id = "banScreenStyles";
     style.textContent = `
-      #banScreen{position:fixed;inset:0;z-index:1000001;background:#0a0a0a;
-        display:flex;align-items:center;justify-content:center;padding:20px;
-        font-family:Arial,sans-serif;}
-      #banScreen .ban-card{max-width:540px;width:100%;background:#181818;
-        border:1px solid #616161;border-radius:10px;padding:40px 32px;text-align:center;
-        box-shadow:0 12px 40px rgba(0,0,0,.6);}
-      #banScreen .ban-icon{font-size:60px;color:#ff5252;margin-bottom:18px;}
-      #banScreen h1{color:#ff9800;font-size:30px;margin:0 0 10px;font-weight:bold;}
-      #banScreen .ban-sub{color:#e0e0e0;font-size:16px;line-height:1.6;margin:0 0 22px;}
-      #banScreen .ban-timer{background:#000;border:1px solid #616161;border-radius:8px;
-        padding:18px;margin:0 0 22px;}
-      #banScreen .ban-timer-label{color:#9a9a9a;font-size:12px;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:8px;}
-      #banScreen .ban-timer-value{color:#fff;font-size:34px;font-weight:bold;
-        font-variant-numeric:tabular-nums;font-family:'Courier New',monospace;}
-      #banScreen .ban-reason{background:#000;border:1px solid #616161;
-        border-left:4px solid #ff9800;border-radius:8px;padding:14px 16px;
-        margin:0 0 22px;text-align:left;}
-      #banScreen .ban-reason-label{color:#ff9800;font-size:12px;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:6px;font-weight:bold;}
-      #banScreen .ban-reason-text{color:#e0e0e0;font-size:15px;line-height:1.5;
+      #banScreen{position:fixed;inset:0;z-index:1000001;background:#202020;
+        display:flex;align-items:flex-start;justify-content:center;padding:24px 20px;
+        overflow:auto;font-family:talkoSS,Arial,sans-serif;}
+      #banScreen .ban-card{max-width:560px;width:100%;background:#000;
+        border:1px solid #616161;border-radius:8px;text-align:center;
+        box-shadow:0 12px 40px rgba(0,0,0,.6);overflow:hidden;margin:auto;}
+      #banScreen .ban-hd{background:linear-gradient(to bottom,#616161,#303030);
+        border-bottom:1px solid #616161;padding:26px 28px 22px;}
+      #banScreen .ban-icon{font-size:46px;color:#ff5468;margin-bottom:10px;}
+      #banScreen h1{color:#ff9800;font-size:28px;margin:0;font-weight:bold;}
+      #banScreen .ban-body{padding:24px 28px 28px;}
+      #banScreen .ban-sub{color:#dcdcdc;font-size:15px;line-height:1.6;margin:0 0 18px;}
+      #banScreen .ban-meta{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+        margin:0 0 16px;}
+      #banScreen .ban-chip{display:inline-flex;align-items:center;gap:7px;background:#161616;
+        border:1px solid #333;border-radius:4px;padding:8px 12px;font-size:13px;color:#c3c3c3;}
+      #banScreen .ban-chip i{color:#ff9800;}
+      #banScreen .ban-chip b{color:#fff;font-weight:bold;}
+      #banScreen .ban-strip{background:#161616;border:1px solid #333;
+        border-left:3px solid #ff9800;border-radius:0;padding:12px 14px;margin:0 0 16px;
+        text-align:left;}
+      #banScreen .ban-strip .lbl{color:#ff9800;font-size:11px;text-transform:uppercase;
+        letter-spacing:1px;font-weight:bold;margin-bottom:5px;display:flex;align-items:center;gap:7px;}
+      #banScreen .ban-strip .txt{color:#e6e6e6;font-size:14.5px;line-height:1.5;
         white-space:pre-wrap;word-break:break-word;}
-      #banScreen .ban-perm{display:inline-block;background:#ff5252;color:#000;
-        font-weight:bold;font-size:15px;padding:10px 18px;border-radius:6px;
-        text-transform:uppercase;letter-spacing:1px;margin:0 0 22px;}
-      #banScreen .ban-discord{display:inline-flex;align-items:center;gap:10px;
-        background:#5865f2;color:#fff;text-decoration:none;font-size:16px;font-weight:bold;
-        padding:14px 26px;border-radius:8px;transition:background .2s;}
+      #banScreen .ban-timer{background:#161616;border:1px solid #616161;border-radius:8px;
+        padding:16px;margin:0 0 16px;}
+      #banScreen .ban-timer-label{color:#8d8d8d;font-size:11px;text-transform:uppercase;
+        letter-spacing:1px;margin-bottom:8px;}
+      #banScreen .ban-timer-value{color:#fff;font-size:32px;font-weight:bold;
+        font-variant-numeric:tabular-nums;font-family:'Courier New',monospace;}
+      #banScreen .ban-perm{display:inline-block;background:#ff5468;color:#1a0005;
+        font-weight:bold;font-size:14px;padding:9px 16px;border-radius:4px;
+        text-transform:uppercase;letter-spacing:1px;margin:0 0 16px;}
+      #banScreen .ban-appeal{border-top:1px solid #333;margin-top:4px;padding-top:18px;text-align:left;}
+      #banScreen .ban-appeal-h{color:#fff;font-size:16px;font-weight:bold;margin:0 0 4px;
+        display:flex;align-items:center;gap:8px;}
+      #banScreen .ban-appeal-h i{color:#ff9800;}
+      #banScreen .ban-appeal-p{color:#9a9a9a;font-size:13px;line-height:1.5;margin:0 0 10px;}
+      #banScreen textarea#banAppealText{width:100%;min-height:96px;resize:vertical;
+        background:#000;color:#fff;border:1px solid #616161;border-radius:4px;padding:11px 12px;
+        font-family:talkoSS,Arial,sans-serif;font-size:14px;line-height:1.5;box-sizing:border-box;}
+      #banScreen textarea#banAppealText:focus{outline:none;border-color:#ff9800;}
+      #banScreen .ban-appeal-row{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;}
+      #banScreen button#banAppealSend{display:inline-flex;align-items:center;gap:8px;
+        background:#ff9800;color:#000;border:none;border-radius:4px;padding:11px 22px;
+        font-size:14px;font-weight:bold;cursor:pointer;font-family:inherit;}
+      #banScreen button#banAppealSend:hover{background:#ffad33;}
+      #banScreen button#banAppealSend:disabled{opacity:.6;cursor:default;}
+      #banScreen .ban-appeal-msg{font-size:13px;line-height:1.5;}
+      #banScreen .ban-appeal-msg.ok{color:#57d9a3;}
+      #banScreen .ban-appeal-msg.err{color:#ff5468;}
+      #banScreen .ban-appeal-done{background:#161616;border:1px solid #333;
+        border-left:3px solid #57d9a3;border-radius:0;padding:14px;color:#d7f3e7;font-size:14px;
+        line-height:1.55;text-align:left;display:flex;gap:10px;align-items:flex-start;}
+      #banScreen .ban-appeal-done i{color:#57d9a3;margin-top:2px;}
+      #banScreen .ban-foot{margin-top:18px;padding-top:18px;border-top:1px solid #333;}
+      #banScreen .ban-discord{display:inline-flex;align-items:center;gap:9px;background:#5865f2;
+        color:#fff;text-decoration:none;font-size:14px;font-weight:bold;padding:11px 20px;
+        border-radius:4px;transition:background .2s;}
       #banScreen .ban-discord:hover{background:#4752c4;}
-      #banScreen .ban-note{color:#8a8a8a;font-size:13px;margin-top:18px;line-height:1.5;}
+      #banScreen .ban-note{color:#8d8d8d;font-size:12.5px;margin-top:14px;line-height:1.5;}
     `;
     document.head.appendChild(style);
   }
@@ -714,26 +748,42 @@ function showBanScreen(info) {
   overlay.id = "banScreen";
   overlay.innerHTML =
     '<div class="ban-card">' +
+    '<div class="ban-hd">' +
     '<div class="ban-icon"><i class="fas fa-gavel"></i></div>' +
     "<h1>Access Blocked</h1>" +
+    "</div>" +
+    '<div class="ban-body">' +
     '<p class="ban-sub">' +
     (permanent
       ? "Your access to Talkomatic has been permanently blocked by a moderator."
       : "Your access to Talkomatic has been temporarily blocked by a moderator.") +
     "</p>" +
-    '<div class="ban-reason" id="banReason" style="display:none">' +
-    '<div class="ban-reason-label">' +
-    '<i class="fas fa-comment-dots"></i> Reason from staff</div>' +
-    '<div class="ban-reason-text" id="banReasonText"></div>' +
+    '<div class="ban-meta" id="banMeta"></div>' +
+    '<div class="ban-strip" id="banReason" style="display:none">' +
+    '<div class="lbl"><i class="fas fa-comment-dots"></i> Reason from staff</div>' +
+    '<div class="txt" id="banReasonText"></div>' +
     "</div>" +
     timerHtml +
+    '<div class="ban-appeal" id="banAppealWrap">' +
+    '<div class="ban-appeal-h"><i class="fas fa-scale-balanced"></i> Appeal this ban</div>' +
+    '<p class="ban-appeal-p">Think this was a mistake? Send a short appeal and a staff member will review it. You only need to send it once.</p>' +
+    '<textarea id="banAppealText" maxlength="1000" placeholder="Explain why this ban should be lifted..."></textarea>' +
+    '<div class="ban-appeal-row">' +
+    '<button id="banAppealSend"><i class="fas fa-paper-plane"></i> Submit appeal</button>' +
+    '<span class="ban-appeal-msg" id="banAppealMsg"></span>' +
+    "</div>" +
+    "</div>" +
+    '<div class="ban-foot">' +
     '<a class="ban-discord" href="' +
     DISCORD +
     '" target="_blank" rel="noopener noreferrer">' +
-    '<i class="fab fa-discord"></i> Appeal on our Discord</a>' +
-    '<p class="ban-note">If you believe this was a mistake, join our Discord and let a staff member know. ' +
-    (permanent ? "" : "This page refreshes automatically once your ban ends.") +
+    '<i class="fab fa-discord"></i> Or appeal on our Discord</a>' +
+    '<p class="ban-note">' +
+    (permanent ? "" : "This page refreshes automatically once your ban ends. ") +
+    "Staff review every appeal." +
     "</p>" +
+    "</div>" +
+    "</div>" +
     "</div>";
   document.body.appendChild(overlay);
 
@@ -746,6 +796,109 @@ function showBanScreen(info) {
       rc.style.display = "block";
     }
   }
+
+  // Who placed the ban (and when), built with textContent so the staff label is
+  // never treated as HTML. Hidden when the server did not record it.
+  const meta = document.getElementById("banMeta");
+  if (meta) {
+    const addChip = (faClass, label, value) => {
+      const chip = document.createElement("span");
+      chip.className = "ban-chip";
+      const i = document.createElement("i");
+      i.className = faClass;
+      chip.appendChild(i);
+      chip.appendChild(document.createTextNode(" " + label + " "));
+      const b = document.createElement("b");
+      b.textContent = value;
+      chip.appendChild(b);
+      meta.appendChild(chip);
+    };
+    if (info.by) addChip("fas fa-user-shield", "Banned by", String(info.by));
+    if (info.bannedAt) {
+      let when = "";
+      try {
+        when = new Date(info.bannedAt).toLocaleDateString();
+      } catch (_) {
+        when = "";
+      }
+      if (when) addChip("fas fa-calendar-day", "Banned on", when);
+    }
+  }
+
+  // ── On-site appeal: the IP block only refuses sockets, so this HTTP POST
+  // still reaches the server. Keyed server-side by the banned IP. ──
+  const showAppealDone = (text) => {
+    const wrap = document.getElementById("banAppealWrap");
+    if (!wrap) return;
+    wrap.textContent = "";
+    const h = document.createElement("div");
+    h.className = "ban-appeal-h";
+    const hi = document.createElement("i");
+    hi.className = "fas fa-scale-balanced";
+    h.appendChild(hi);
+    h.appendChild(document.createTextNode(" Appeal this ban"));
+    const done = document.createElement("div");
+    done.className = "ban-appeal-done";
+    const ic = document.createElement("i");
+    ic.className = "fas fa-circle-check";
+    done.appendChild(ic);
+    done.appendChild(document.createTextNode(text));
+    wrap.appendChild(h);
+    wrap.appendChild(done);
+  };
+  const sendBtn = document.getElementById("banAppealSend");
+  if (sendBtn)
+    sendBtn.addEventListener("click", () => {
+      const ta = document.getElementById("banAppealText");
+      const msgEl = document.getElementById("banAppealMsg");
+      if (!ta || !msgEl) return;
+      const text = (ta.value || "").trim();
+      msgEl.className = "ban-appeal-msg";
+      msgEl.textContent = "";
+      if (text.length < 3) {
+        msgEl.classList.add("err");
+        msgEl.textContent = "Please write a little more.";
+        return;
+      }
+      sendBtn.disabled = true;
+      const prev = sendBtn.innerHTML;
+      sendBtn.textContent = "Sending...";
+      const deviceId =
+        (window.TalkomaticIdentity && window.TalkomaticIdentity.deviceId) ||
+        undefined;
+      fetch("/api/v1/appeal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ message: text, deviceId }),
+      })
+        .then((r) => r.json().catch(() => ({ ok: false })))
+        .then((d) => {
+          if (d && d.ok)
+            return showAppealDone(
+              "Appeal submitted. A staff member will review it. You do not need to send it again.",
+            );
+          if (d && d.code === "already")
+            return showAppealDone(
+              "You already have an appeal under review. Please wait for staff to respond.",
+            );
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = prev;
+          msgEl.classList.add("err");
+          if (d && d.code === "too_short")
+            msgEl.textContent = "Please write a little more.";
+          else if (d && d.code === "not_banned")
+            msgEl.textContent =
+              "Your ban may have already ended. Try refreshing the page.";
+          else msgEl.textContent = "Could not send your appeal. Please try again.";
+        })
+        .catch(() => {
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = prev;
+          msgEl.classList.add("err");
+          msgEl.textContent = "Could not send your appeal. Please try again.";
+        });
+    });
 
   if (!permanent && info.expiry) {
     const tick = () => {
@@ -1994,6 +2147,102 @@ if (staffLoginLink)
     else openStaffKeyEntry();
   });
 
+// The latest mod-application status for this browser (pending / approved /
+// rejected), pushed by the server on connect and on demand. Lets the lobby
+// menu offer "Check status" with the reviewer's note instead of "Become a
+// moderator" once a person has applied.
+let myAppStatus = null;
+const APP_STATUS_META = {
+  pending: {
+    color: "#ffb454",
+    fa: "fa-hourglass-half",
+    title: "Application under review",
+  },
+  approved: {
+    color: "#57d9a3",
+    fa: "fa-circle-check",
+    title: "Application approved",
+  },
+  rejected: {
+    color: "#ff5468",
+    fa: "fa-circle-xmark",
+    title: "Application not approved",
+  },
+};
+
+// Restyle the lobby link: a colored status dot + "Check status" once an
+// application exists, otherwise the plain "Become a moderator". Staff never see
+// this link (updateStaffLink hides it), so only restyle it for non-staff.
+function updateModApplyLink() {
+  const link = document.getElementById("modApplyLink");
+  if (!link || currentUserIsDev || currentUserIsMod) return;
+  if (myAppStatus && myAppStatus.has && APP_STATUS_META[myAppStatus.status]) {
+    const m = APP_STATUS_META[myAppStatus.status];
+    link.innerHTML =
+      '<i class="fas fa-circle" style="color:' +
+      m.color +
+      '"></i> Check status';
+  } else {
+    link.innerHTML = '<i class="fas fa-user-pen"></i> Become a moderator';
+  }
+}
+
+// The status modal: a colored icon (amber pending, red denied, green approved)
+// and the reviewer's message if they left one.
+function showAppStatus() {
+  const st = myAppStatus;
+  if (!st || !st.has) return openModApply();
+  if (!window.StaffUI) return;
+  const m = APP_STATUS_META[st.status] || APP_STATUS_META.pending;
+  const body = document.createElement("div");
+  const p = document.createElement("p");
+  p.style.margin = "0 0 6px";
+  p.textContent =
+    st.status === "approved"
+      ? "Good news - your application was approved. Your moderator access is delivered to this browser automatically; reload if you do not see it yet."
+      : st.status === "rejected"
+        ? "Your application was reviewed and not approved this time."
+        : "Your application is in the queue. A developer or full moderator will review it soon. Thanks for your patience.";
+  body.appendChild(p);
+  if (st.submittedAt) {
+    const s = document.createElement("p");
+    s.style.cssText = "margin:6px 0 0;color:#8d8d8d;font-size:13px;";
+    s.textContent = "Submitted " + new Date(st.submittedAt).toLocaleString();
+    body.appendChild(s);
+  }
+  // Reviewer note rendered via textContent (never HTML), squared orange-style
+  // strip matching the rest of the staff UI.
+  if (st.reason) {
+    const note = document.createElement("div");
+    note.style.cssText =
+      "margin-top:14px;padding:11px 13px;background:#161616;border:1px solid #333;border-left:3px solid " +
+      m.color +
+      ";border-radius:0;text-align:left;";
+    const nl = document.createElement("div");
+    nl.style.cssText =
+      "font-size:11px;text-transform:uppercase;letter-spacing:.6px;font-weight:bold;margin-bottom:5px;color:" +
+      m.color +
+      ";";
+    nl.textContent = "Message from staff";
+    const nt = document.createElement("div");
+    nt.style.cssText =
+      "color:#e6e6e6;font-size:14px;line-height:1.5;white-space:pre-wrap;";
+    nt.textContent = st.reason;
+    note.appendChild(nl);
+    note.appendChild(nt);
+    body.appendChild(note);
+  }
+  const actions = [{ label: "Close", kind: "primary", onClick: () => {} }];
+  if (st.status === "rejected")
+    actions.unshift({ label: "Apply again", onClick: () => openModApply() });
+  StaffUI.modal({
+    title: m.title,
+    icon: '<i class="fas ' + m.fa + '" style="color:' + m.color + '"></i>',
+    body: body,
+    actions: actions,
+  });
+}
+
 // Mod application (active members only; the server re-checks "active").
 async function openModApply() {
   if (currentUserIsDev || currentUserIsMod) {
@@ -2076,20 +2325,32 @@ const modApplyLink = document.getElementById("modApplyLink");
 if (modApplyLink)
   modApplyLink.addEventListener("click", (e) => {
     e.preventDefault();
-    openModApply();
+    // Already applied? Show their status. Otherwise open the apply form.
+    if (myAppStatus && myAppStatus.has) {
+      socket.emit("mod application status"); // refresh in case it changed
+      showAppStatus();
+    } else openModApply();
   });
 socket.on("mod application result", (d) => {
   if (!d) return;
-  if (d.ok)
+  if (d.ok) {
     lobbyNotify(
       "Application sent! Staff will review it. Thanks for stepping up.",
       "success",
       { timeout: 7000 },
     );
-  else
+    // Reflect the pending state on the menu link right away.
+    myAppStatus = { has: true, status: "pending", submittedAt: Date.now() };
+    updateModApplyLink();
+  } else
     lobbyNotify(d.error || "Could not send your application.", "error", {
       timeout: 7000,
     });
+});
+// The server pushes this on connect (if an application exists) and on request.
+socket.on("mod application status", (d) => {
+  myAppStatus = d && d.has ? d : null;
+  updateModApplyLink();
 });
 
 // ── Invite leaderboard: a custom, large, centered modal with two tabs ───────
@@ -2676,9 +2937,12 @@ function updateStaffLink() {
   }
   // Staff do not apply to be a mod, so hide the apply link for them.
   const applyLink = document.getElementById("modApplyLink");
-  if (applyLink)
+  if (applyLink) {
     applyLink.style.display =
       currentUserIsDev || currentUserIsMod ? "none" : "";
+    // Reflect any known application status ("Check status" + colored dot).
+    updateModApplyLink();
+  }
 }
 updateStaffLink();
 if (window.location.hash === "#staff") setTimeout(openStaffKeyEntry, 700);

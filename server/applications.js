@@ -95,6 +95,18 @@ function unclaimedApproved(deviceId) {
   );
 }
 
+// The most recent application from a device, whatever its status. Powers the
+// lobby "Check status" link so an applicant can see pending / approved /
+// rejected and any note the reviewer left.
+function latestForDevice(deviceId) {
+  if (!deviceId) return null;
+  let best = null;
+  for (const a of apps)
+    if (a.deviceId === deviceId && (!best || (a.id || 0) > (best.id || 0)))
+      best = a;
+  return best;
+}
+
 function markClaimed(id) {
   const a = get(id);
   if (a) {
@@ -131,6 +143,7 @@ module.exports = {
   get,
   setStatus,
   unclaimedApproved,
+  latestForDevice,
   markClaimed,
   pendingForDevice,
   pendingCount,

@@ -36,6 +36,7 @@ const modwatch = require("./modwatch");
 const applications = require("./applications");
 const invites = require("./invites");
 const reports = require("./reports");
+const appeals = require("./appeals");
 const blocklist = require("./blocklist");
 const warnings = require("./warnings");
 
@@ -697,9 +698,87 @@ function buildReportsList() {
           reason: r.reason,
           by: r.byName,
           at: r.at,
+          // What the reported user had typed when this report was filed, so
+          // staff can see the offending text even after it is cleared or they
+          // leave. Captured at report time; rendered as plain text on the board.
+          targetText: r.targetText || null,
         })),
     };
   });
+}
+
+// Build the appeals board payload (shared by the get + resolve handlers): one
+// row per appeal, newest first. The raw IP is dev-only, matching the reports
+// board and audit feed; `stillBlocked` lets the board show whether the ban the
+// appeal contests is still in force.
+function buildAppealsList(forDev) {
+  const now = Date.now();
+  return appeals.list().map((a) => {
+    const block = state.blockedIPs.get(a.ip);
+    const expiry = block && typeof block === "object" ? block.expiry : block;
+    const stillBlocked =
+      !!block &&
+      (!expiry || expiry === Number.MAX_SAFE_INTEGER || now < expiry);
+    const ban = a.ban || {};
+    return {
+      id: a.id,
+      name: a.name || null,
+      userId: a.userId || null,
+      deviceId: a.deviceId || null,
+      ip: forDev ? a.ip : undefined,
+      message: a.message || "",
+      at: a.at,
+      status: a.status,
+      resolution: a.resolution || null,
+      reviewedBy: a.reviewedBy || null,
+      reviewedAt: a.reviewedAt || null,
+      stillBlocked,
+      banBy: ban.by || null,
+      banReason: ban.reason || null,
+      banPermanent: !!ban.permanent,
+      banExpiry: ban.expiry || 0,
+      banAt: ban.ts || null,
+    };
+  });
+}
+
+// Push the appeals board to every open dashboard (full mods + devs) so a new
+// appeal appears live without a manual refresh. The IP is dev-only per socket.
+function broadcastAppealsList() {
+  if (!io()) return;
+  for (const [, s] of io().sockets.sockets)
+    if (s.isModLog && (s.isDev || (s.isMod && (s.modLevel || 2) >= 2)))
+      s.emit("staff appeals", buildAppealsList(!!s.isDev));
+}
+
+// Called from the HTTP appeal route after an appeal is filed: drop a staff
+// notification (full mods + devs) and live-update any open dashboards.
+function announceAppeal(id) {
+  const a = appeals.get(id);
+  if (!a) return;
+  audit.recordNotification({
+    kind: "appeal",
+    text: `${a.name || "A banned user"} submitted a ban appeal.`,
+    target: a.userId ? `user:${a.name || "user"}(${a.userId})` : null,
+    by: a.name || null,
+    minLevel: 2,
+  });
+  broadcastAppealsList();
+}
+
+// The latest mod-application status for a device, for the lobby "Check status"
+// link. The reviewer's note is included so the applicant can read any message
+// the staff member left when they approved or declined.
+function appStatusPayload(deviceId) {
+  const a = applications.latestForDevice(deviceId);
+  if (!a) return { has: false };
+  return {
+    has: true,
+    status: a.status, // pending | approved | rejected
+    reason: a.reason || null,
+    reviewedAt: a.reviewedAt || null,
+    submittedAt: a.submittedAt || null,
+  };
 }
 
 // Identity lookup passed into the invite forensics so it can measure how many
@@ -1919,6 +1998,14 @@ function registerSocketHandlers() {
           })
           .catch((e) => console.error("application claim grant failed:", e));
       }
+    }
+
+    // Tell this browser the status of its latest mod application (if any), so
+    // the lobby menu can offer "Check status" with the reviewer's note instead
+    // of "Become a moderator". Staff never see this (their link is hidden).
+    if (socket.deviceId && !socket.isDev && !socket.isMod) {
+      const st = appStatusPayload(socket.deviceId);
+      if (st.has) socket.emit("mod application status", st);
     }
 
     // Credit the inviter if this device just became an active invitee.
@@ -4383,6 +4470,11 @@ function registerSocketHandlers() {
         state.botBlacklist.delete(ip);
         blocklist.saveSoon();
         broadcastBlockList();
+        // Any open appeal against this IP is now moot; close it so the appeals
+        // inbox does not keep a stale entry for an IP that is no longer banned.
+        const reviewer = `${socket.isDev ? "dev" : "mod"}:${socket.staffLabel || ""}`;
+        if (appeals.resolveOpenForIp(ip, "lifted", reviewer))
+          broadcastAppealsList();
         logStaff(socket, "unblock ip", ip, "-");
         socket.emit("staff action result", {
           action: "unblock ip",
@@ -4753,6 +4845,63 @@ function registerSocketHandlers() {
           "-",
         );
         socket.emit("staff reports", buildReportsList());
+      }),
+    );
+
+    // ── Appeals board (full mods + devs): ban appeals submitted on-site ──────
+    socket.on(
+      "staff get appeals",
+      safe(async () => {
+        if (!requireModLevel(socket, 2)) return;
+        socket.emit("staff appeals", buildAppealsList(!!socket.isDev));
+      }),
+    );
+
+    // Resolve an appeal. "lift" unblocks the IP (dev-only, like every other IP
+    // unblock) and marks the appeal accepted; "dismiss" just closes it (full
+    // mods + devs). Either way the board refreshes live for every open dash.
+    socket.on(
+      "staff resolve appeal",
+      safe(async (data) => {
+        if (!requireModLevel(socket, 2)) return;
+        const id = Number(data?.id);
+        const decision = data?.decision === "lift" ? "lift" : "dismiss";
+        const a = appeals.get(id);
+        if (!a)
+          return socket.emit(
+            "error",
+            createErrorResponse(ERROR_CODES.BAD_REQUEST, "No such appeal."),
+          );
+        const reviewer = `${socket.isDev ? "dev" : "mod"}:${socket.staffLabel || ""}`;
+        if (decision === "lift") {
+          if (!requireDev(socket)) return; // lifting a ban is dev-only
+          state.blockedIPs.delete(a.ip);
+          state.botBlacklist.delete(a.ip);
+          blocklist.saveSoon();
+          broadcastBlockList();
+          appeals.resolveOpenForIp(a.ip, "lifted", reviewer);
+          logStaff(socket, "lift ban (appeal)", a.ip, "-");
+        } else {
+          appeals.resolve(id, "dismissed", reviewer);
+          logStaff(
+            socket,
+            "dismiss appeal",
+            { name: a.name || "?", id: a.userId || a.deviceId || "-" },
+            "-",
+          );
+        }
+        broadcastAppealsList();
+        socket.emit("staff appeals", buildAppealsList(!!socket.isDev));
+      }),
+    );
+
+    // ── Mod application status (any user): power the lobby "Check status" link.
+    socket.on(
+      "mod application status",
+      safe(async () => {
+        if (!socket.deviceId)
+          return socket.emit("mod application status", { has: false });
+        socket.emit("mod application status", appStatusPayload(socket.deviceId));
       }),
     );
 
@@ -5811,4 +5960,5 @@ module.exports = {
   leaveRoom,
   joinRoom,
   roomCapacity,
+  announceAppeal,
 };

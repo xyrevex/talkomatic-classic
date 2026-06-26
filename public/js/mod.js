@@ -46,6 +46,7 @@
   let appsQuery = "";
   const APPS_PAGE = 8;
   let reportsList = [];
+  let appealsList = []; // ban appeals (Appeals tab)
   let invitesList = []; // flagged inviters (Invites tab)
   let invitesPage = 0;
   const INV_PAGE = 12;
@@ -1135,7 +1136,10 @@
       const idCol = document.createElement("div");
       idCol.className = "rc-id";
       idCol.appendChild(span("rc-kicker", "Reported user"));
-      idCol.appendChild(span("nm", r.name || "user"));
+      // The reported user's name traces their activity in the Activity tab.
+      const rNameNode = uref(r.name || "user", r.targetUserId);
+      rNameNode.classList.add("nm");
+      idCol.appendChild(rNameNode);
       const meta = document.createElement("div");
       meta.className = "rc-meta";
       const cnt = span("rbadge " + (hot ? "count" : "warm"));
@@ -1185,6 +1189,26 @@
         });
         card.appendChild(cats);
       }
+
+      // What the reported user had typed when they were reported (most recent
+      // snapshot). Saved at report time, so staff still see the offending text
+      // even after it was cleared or the user left.
+      const typedSnap = (r.reasons || [])
+        .map((x) => x.targetText)
+        .find((t) => t && t.trim());
+      const typedBox = divc("rc-typed");
+      const typedLbl = divc("lbl");
+      typedLbl.appendChild(icon("fa-keyboard"));
+      typedLbl.appendChild(
+        document.createTextNode(" Their chat box when reported"),
+      );
+      typedBox.appendChild(typedLbl);
+      const typedTxt = divc("txt" + (typedSnap ? "" : " none"));
+      typedTxt.textContent = typedSnap
+        ? typedSnap
+        : "Nothing captured - their chat box was empty.";
+      typedBox.appendChild(typedTxt);
+      card.appendChild(typedBox);
 
       // "Who reported" header + one row per reporter, so it is unmistakable
       // that the people listed here are the reporters, not the user above.
@@ -1260,6 +1284,217 @@
       foot.appendChild(discard);
       card.appendChild(foot);
 
+      wrap.appendChild(card);
+    });
+  }
+
+  // ── Appeals tab (full mods + devs): ban appeals submitted on-site ──
+  function appealStatusMeta(a) {
+    if (a.status === "resolved") {
+      if (a.resolution === "lifted")
+        return { badge: "on", icon: "fa-unlock", label: "BAN LIFTED" };
+      return { badge: "off", icon: "fa-circle-xmark", label: "DISMISSED" };
+    }
+    return { badge: "warm", icon: "fa-scale-balanced", label: "OPEN" };
+  }
+  // Human "ends in ..." for a future ban expiry timestamp.
+  function untilLabel(ts) {
+    const ms = (ts || 0) - Date.now();
+    if (ms <= 0) return "ended";
+    let s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    s -= d * 86400;
+    const h = Math.floor(s / 3600);
+    s -= h * 3600;
+    const m = Math.floor(s / 60);
+    if (d > 0) return "ends in " + d + "d " + h + "h";
+    if (h > 0) return "ends in " + h + "h " + m + "m";
+    return "ends in " + m + "m";
+  }
+  function resolveAppeal(a, decision) {
+    socket.emit("staff resolve appeal", { id: a.id, decision });
+  }
+
+  function renderAppeals() {
+    const wrap = $("appealsList");
+    if (!wrap) return;
+    wrap.textContent = "";
+    const open = appealsList.filter((a) => a.status === "open");
+    const badge = $("appealsBadge");
+    if (badge) badge.textContent = String(open.length);
+    const sub = $("appealsSub");
+    if (sub)
+      sub.textContent = open.length
+        ? open.length +
+          " open appeal" +
+          (open.length === 1 ? "" : "s") +
+          (appealsList.length > open.length
+            ? "  ·  " + appealsList.length + " total"
+            : "")
+        : appealsList.length
+          ? "No open appeals  ·  " + appealsList.length + " resolved"
+          : "No appeals yet";
+    if (!appealsList.length) {
+      wrap.appendChild(emptyBox("fa-scale-balanced", "No ban appeals yet."));
+      return;
+    }
+    const isDev = me && me.role === "dev";
+
+    appealsList.forEach((a) => {
+      const sm = appealStatusMeta(a);
+      const card = divc(
+        "appealcard" + (a.status === "resolved" ? " resolved" : ""),
+      );
+
+      // Header: avatar, name (click to trace), status + still-blocked, time
+      const head = divc("ap-head");
+      const av = divc("avatar");
+      av.style.background = a.status === "open" ? "var(--amber)" : "var(--line)";
+      av.textContent = initialOf(a.name);
+      head.appendChild(av);
+      const idc = divc("ap-id");
+      idc.appendChild(span("ap-kicker", "Appealing user"));
+      let nameNode;
+      if (a.userId) {
+        nameNode = uref(a.name || "user", a.userId);
+        nameNode.classList.add("nm");
+      } else {
+        nameNode = span("nm", a.name || "Unknown user");
+      }
+      idc.appendChild(nameNode);
+      const meta = divc("ap-meta");
+      const stb = span("rbadge " + sm.badge);
+      stb.appendChild(icon(sm.icon));
+      stb.appendChild(document.createTextNode(" " + sm.label));
+      meta.appendChild(stb);
+      const blk = span("rbadge " + (a.stillBlocked ? "off" : "on"));
+      blk.appendChild(icon(a.stillBlocked ? "fa-ban" : "fa-unlock"));
+      blk.appendChild(
+        document.createTextNode(
+          a.stillBlocked ? " Still blocked" : " Not blocked",
+        ),
+      );
+      meta.appendChild(blk);
+      if (a.at) {
+        const t = span(null, "appealed " + relTime(a.at));
+        t.title = fmtTime(a.at);
+        meta.appendChild(t);
+      }
+      idc.appendChild(meta);
+      head.appendChild(idc);
+      card.appendChild(head);
+
+      // Two boxes: the ban being contested, and the user's appeal message
+      const grid = divc("ap-grid");
+
+      const contest = divc("ap-box contest");
+      const cl = divc("lbl");
+      cl.appendChild(icon("fa-ban"));
+      cl.appendChild(document.createTextNode(" Ban they are contesting"));
+      contest.appendChild(cl);
+      const cv = divc("val");
+      const banBits = [];
+      banBits.push(
+        a.banPermanent
+          ? "Permanent ban"
+          : "Temporary ban" +
+              (a.banExpiry ? " (" + untilLabel(a.banExpiry) + ")" : ""),
+      );
+      if (a.banBy) banBits.push("by " + a.banBy);
+      const banLine = document.createElement("div");
+      banLine.textContent = banBits.join("  ·  ");
+      cv.appendChild(banLine);
+      const reasonLine = document.createElement("div");
+      reasonLine.style.marginTop = "5px";
+      reasonLine.style.color = "var(--dim)";
+      reasonLine.textContent = a.banReason
+        ? "Reason: " + a.banReason
+        : "No ban reason on file.";
+      cv.appendChild(reasonLine);
+      contest.appendChild(cv);
+      grid.appendChild(contest);
+
+      const msg = divc("ap-box");
+      const ml = divc("lbl");
+      ml.appendChild(icon("fa-comment-dots"));
+      ml.appendChild(document.createTextNode(" Their appeal"));
+      msg.appendChild(ml);
+      const mv = divc("val" + (a.message ? "" : " none"));
+      mv.textContent = a.message || "No message.";
+      msg.appendChild(mv);
+      grid.appendChild(msg);
+
+      card.appendChild(grid);
+
+      // Footer: resolution note (if any) + identity + actions
+      const foot = divc("ap-foot");
+      const info = divc("ap-info");
+      if (a.status === "resolved") {
+        info.appendChild(
+          span(
+            null,
+            (a.resolution === "lifted" ? "Ban lifted" : "Dismissed") +
+              (a.reviewedBy ? " by " + cleanReviewer(a.reviewedBy) : "") +
+              (a.reviewedAt ? " · " + relTime(a.reviewedAt) : ""),
+          ),
+        );
+      }
+      if (a.deviceId || a.ip) {
+        const idLine = span("mono", "");
+        if (a.deviceId)
+          idLine.appendChild(document.createTextNode("id: " + a.deviceId));
+        if (a.ip) {
+          if (a.deviceId) idLine.appendChild(document.createTextNode("   "));
+          idLine.appendChild(document.createTextNode("IP: "));
+          idLine.appendChild(span("ip", a.ip));
+        }
+        info.appendChild(idLine);
+      }
+      foot.appendChild(info);
+
+      if (a.status === "open") {
+        const actions = divc("ap-actions");
+        if (isDev && a.stillBlocked) {
+          const lift = document.createElement("button");
+          lift.className = "btn sm primary";
+          lift.appendChild(icon("fa-unlock"));
+          lift.appendChild(document.createTextNode(" Lift ban"));
+          lift.addEventListener("click", async () => {
+            if (window.StaffUI) {
+              const ok = await StaffUI.confirm({
+                title: "Lift ban",
+                message:
+                  "Unblock " +
+                  (a.name || "this user") +
+                  "'s IP and accept their appeal?",
+                confirmText: "Lift ban",
+              });
+              if (!ok) return;
+            }
+            resolveAppeal(a, "lift");
+          });
+          actions.appendChild(lift);
+        }
+        const dismiss = document.createElement("button");
+        dismiss.className = "btn sm danger";
+        dismiss.appendChild(icon("fa-xmark"));
+        dismiss.appendChild(document.createTextNode(" Dismiss"));
+        dismiss.addEventListener("click", async () => {
+          if (window.StaffUI) {
+            const ok = await StaffUI.confirm({
+              title: "Dismiss appeal",
+              danger: true,
+              message: "Dismiss this appeal and keep the ban in place?",
+              confirmText: "Dismiss",
+            });
+            if (!ok) return;
+          }
+          resolveAppeal(a, "dismiss");
+        });
+        actions.appendChild(dismiss);
+        foot.appendChild(actions);
+      }
+      card.appendChild(foot);
       wrap.appendChild(card);
     });
   }
@@ -1677,20 +1912,32 @@
       approve.appendChild(icon("fa-check"));
       approve.appendChild(document.createTextNode(" Approve (L1)"));
       approve.addEventListener("click", async () => {
+        let msg = "";
         if (window.StaffUI) {
-          const ok = await StaffUI.confirm({
+          msg = await StaffUI.prompt({
             title: "Approve application",
+            icon: '<i class="fas fa-check"></i>',
+            subtitle: a.username || "this user",
             message:
               "Approve " +
               (a.username || "this user") +
               " as a junior (L1) moderator? They get a mod key right away.",
+            fields: [
+              {
+                name: "value",
+                label: "Message to the applicant (optional, they will see it)",
+                type: "text",
+                maxLength: 300,
+              },
+            ],
             confirmText: "Approve",
           });
-          if (!ok) return;
+          if (msg === null) return; // cancelled
         }
         socket.emit("mod application review", {
           id: a.id,
           decision: "approve",
+          reason: msg || "",
         });
       });
       const reject = document.createElement("button");
@@ -1929,6 +2176,7 @@
     if (name === "sessions") socket.emit("dev get sessions");
     if (name === "applications") socket.emit("mod applications list");
     if (name === "reports") socket.emit("staff get reports");
+    if (name === "appeals") socket.emit("staff get appeals");
     if (name === "invites") socket.emit("staff get invite report");
     if (window.innerWidth <= 860) document.body.classList.add("nav-closed");
   }
@@ -2003,6 +2251,7 @@
     if (fullMod) {
       socket.emit("mod applications list");
       socket.emit("staff get reports");
+      socket.emit("staff get appeals");
       socket.emit("staff get invite report");
     }
   });
@@ -2051,6 +2300,11 @@
   socket.on("staff reports", (list) => {
     reportsList = Array.isArray(list) ? list : [];
     renderReports();
+  });
+
+  socket.on("staff appeals", (list) => {
+    appealsList = Array.isArray(list) ? list : [];
+    renderAppeals();
   });
 
   socket.on("staff invite report", (list) => {
@@ -2215,6 +2469,10 @@
   $("reportsRefresh") &&
     $("reportsRefresh").addEventListener("click", () =>
       socket.emit("staff get reports"),
+    );
+  $("appealsRefresh") &&
+    $("appealsRefresh").addEventListener("click", () =>
+      socket.emit("staff get appeals"),
     );
   $("invitesRefresh") &&
     $("invitesRefresh").addEventListener("click", () => {
