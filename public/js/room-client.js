@@ -2378,10 +2378,7 @@ function updateDateTime() {
     "en-US",
     { weekday: "long", year: "numeric", month: "short", day: "numeric" },
   );
-  dateTimeElement.querySelector(".time").textContent = now.toLocaleTimeString(
-    "en-US",
-    { hour: "2-digit", minute: "2-digit", hour12: true },
-  );
+  dateTimeElement.querySelector(".time").textContent = now.toLocaleTimeString();
 }
 
 // ── 16. SOCKET EVENT HANDLERS ───────────────────────────────────────────────
