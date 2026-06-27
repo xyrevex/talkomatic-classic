@@ -105,7 +105,7 @@ function deviceTypeFromUA(ua) {
   if (/fridge|refrigerator|familyhub|family hub/i.test(s))
     return "refrigerator";
 
-  if (/(oculusbrowser|vision pro|visionos|vive|valve index|windows mixed reality|pico|vr|xr)/i.test(s))
+  if (/(oculusbrowser|vision pro|visionos|vive|valve index|windows mixed reality|pico|vr|xr|x4000)/i.test(s))
     return "vr";
 
   if (/(playstation|ps[1-5]|xbox|nintendo)/i.test(s))
@@ -117,7 +117,7 @@ function deviceTypeFromUA(ua) {
   if (/(smart-?tv|googletv|apple tv|androidtv|crkey|roku|aft[a-z]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/i.test(s))
     return "tv";
 
-  if ((/(ipad|tablet|playbook)/i.test(s) || (/android/i.test(s) && !/mobile/i.test(s))) &&
+  if ((/(ipad|tablet|playbook|portalgo)/i.test(s) || (/android/i.test(s) && !/mobile/i.test(s))) &&
     !E_READER_RE.test(s)
   ) return "tablet";
 
@@ -128,7 +128,10 @@ function deviceTypeFromUA(ua) {
   if (/(android automotive|androidauto|carplay|tesla|mbux|sync|qtcarbrowser)/i.test(s))
     return "car";
 
-  if (/(mobi|iphone|ipod|android|blackberry|bb10|iemobile|opera mini|windows phone)/i.test(s))
+  if (/(blackberry|nokia)/i.test(s))
+    return "qwerty";
+
+  if (/(mobi|iphone|ipod|android|bb10|iemobile|opera mini|windows phone)/i.test(s))
     return "mobile";
 
   if (/(windows|macintosh|mac os|linux|cros|x11)/i.test(s))

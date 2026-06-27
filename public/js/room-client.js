@@ -2329,6 +2329,7 @@ socket.on("dev hide status", (data) => {
 const DEVICE_META = {
   desktop: { icon: "fas fa-desktop", title: "Desktop" },
   mobile: { icon: "fas fa-mobile-screen-button", title: "Mobile" },
+  qwerty: { icon: "fas fa-tty", title: "QWERTY Phone" },
   tablet: { icon: "fas fa-tablet-screen-button", title: "Tablet" },
   tv: { icon: "fas fa-tv", title: "TV" },
   vr: { icon: "fas fa-vr-cardboard", title: "VR" },
