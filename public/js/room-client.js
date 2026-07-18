@@ -3816,25 +3816,43 @@ function openUserStaffMenu(user) {
   // Kick. Full mods/devs also place a room ban; junior mods can only remove.
   items.push({
     icon: '<i class="fas fa-user-slash"></i>',
-    label: isFullMod ? "Kick + room ban" : "Kick from room",
+    label: "Kick from room",
     danger: true,
-    desc: isFullMod
-      ? "Remove and ban from this room"
-      : "Remove from this room (no ban)",
+    desc: "Remove from this room (no ban)",
     onClick: async () => {
       if (
         await StaffUI.confirm({
-          title: isFullMod ? "Kick + ban" : "Kick",
-          message: isFullMod
-            ? `Kick and room-ban ${name}?`
-            : `Remove ${name} from this room?`,
+          title: "Kick",
+          message: `Remove ${name} from this room?`,
           danger: true,
-          confirmText: isFullMod ? "Kick + ban" : "Kick",
+          confirmText: "Kick",
         })
-      )
-        socket.emit("staff kick", { targetUserId: user.id, ban: isFullMod });
+      ) {
+        socket.emit("staff kick", { targetUserId: user.id, ban: false });
+      }
     },
   });
+
+  if (isFullMod) {
+    items.push({
+      icon: '<i class="fas fa-user-slash"></i>',
+      label: "Kick + room ban",
+      danger: true,
+      desc: "Remove and ban from this room",
+      onClick: async () => {
+        if (
+          await StaffUI.confirm({
+            title: "Kick + ban",
+            message: `Kick and room-ban ${name}?`,
+            danger: true,
+            confirmText: "Kick + ban",
+          })
+        ) {
+          socket.emit("staff kick", { targetUserId: user.id, ban: true });
+        }
+      },
+    });
+  }
 
   // IP block - full mods / devs only.
   if (isFullMod) {
