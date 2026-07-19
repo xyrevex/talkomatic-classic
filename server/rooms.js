@@ -588,6 +588,14 @@ function canActOn(actorSocket, targetUserId) {
   return false;
 }
 
+function canManageNotesOn(actorSocket, targetUserId) {
+  if (!actorSocket) return false;
+  if (actorSocket.isDev) return true;
+  if (!actorSocket.isMod || (actorSocket.modLevel || 2) < 1) return false;
+  const targetRole = getUserStaffRole(targetUserId);
+  return targetRole === null || targetRole === "mod";
+}
+
 // Gate helpers: emit a uniform error and return false when not permitted.
 function requireStaff(socket) {
   if (isStaffSocket(socket)) return true;
@@ -1178,6 +1186,11 @@ function formatUserForSocket(user, recipientSocket) {
   const recipientIsDev = !!recipientSocket?.isDev;
   if (user.isHidden && !recipientIsDev) {
     return formatted;
+  }
+
+  if (recipientSocket?.isDev || recipientSocket?.isMod) {
+    const note = user.deviceId ? identity.getNote(user.deviceId) : null;
+    if (note) formatted.note = note;
   }
 
   if (user.isDev) {
@@ -4055,6 +4068,53 @@ function registerSocketHandlers() {
           action: "warn",
           ok: true,
           targetUserId,
+        });
+      }),
+    );
+
+    socket.on(
+      "staff note",
+      safe(async (data) => {
+        if (!requireStaff(socket)) return;
+        const targetUserId = data?.targetUserId;
+        if (!targetUserId)
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.BAD_REQUEST,
+              "targetUserId required.",
+            ),
+          );
+        if (!canManageNotesOn(socket, targetUserId))
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.FORBIDDEN,
+              "You cannot manage notes for this user.",
+            ),
+          );
+        const roomId = getUserCurrentRoom(targetUserId);
+        const room = roomId ? state.rooms.get(roomId) : null;
+        const targetUser = room?.users.find((u) => u.id === targetUserId);
+        const targetSocket = findSocketByUserId(targetUserId, roomId);
+        const targetDeviceId = targetSocket?.deviceId || targetUser?.deviceId || null;
+        const note = sanitizeMessage(
+          typeof data?.message === "string" ? data.message : "",
+        ).slice(0, 1000);
+        if (targetDeviceId) identity.setNote(targetDeviceId, note);
+        if (roomId) updateRoom(roomId);
+        logStaff(
+          socket,
+          note ? "set note" : "clear note",
+          targetUser || { id: targetUserId },
+          room || "-",
+          note || "(cleared)",
+        );
+        socket.emit("staff action result", {
+          action: note ? "set note" : "clear note",
+          ok: true,
+          targetUserId,
+          note: note || null,
         });
       }),
     );
