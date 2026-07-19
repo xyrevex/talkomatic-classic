@@ -1327,7 +1327,27 @@ function createRoomElement(room) {
   roomInfo.appendChild(usersDetailDiv);
 
   roomTop.appendChild(roomInfo);
-  roomElement.appendChild(enterButton);
+
+  // Enter plus a spectate eye for public rooms. Spectate is read-only and works
+  // even when the room is full; semi-private rooms are left out so the access
+  // code isn't bypassed.
+  const roomActions = document.createElement("div");
+  roomActions.className = "room-actions";
+  roomActions.appendChild(enterButton);
+  if (room.type === "public") {
+    const spectateEye = document.createElement("button");
+    spectateEye.type = "button";
+    spectateEye.className = "spectate-button";
+    spectateEye.innerHTML = '<i class="fas fa-eye"></i>';
+    spectateEye.title = "Spectate (read-only)";
+    spectateEye.setAttribute("aria-label", "Spectate this room");
+    spectateEye.addEventListener("click", (e) => {
+      e.stopPropagation();
+      window.location.href = `/room.html?roomId=${room.id}&spectate=1`;
+    });
+    roomActions.appendChild(spectateEye);
+  }
+  roomElement.appendChild(roomActions);
   roomElement.appendChild(roomTop);
 
   // Per-room staff controls: spectate is dev + mod; spotlight stays dev-only.
@@ -1335,15 +1355,19 @@ function createRoomElement(room) {
     const devRow = document.createElement("div");
     devRow.className = "lobby-dev-controls";
 
-    const spectateBtn = document.createElement("button");
-    spectateBtn.type = "button";
-    spectateBtn.className = "lobby-dev-btn";
-    spectateBtn.innerHTML = '<i class="fas fa-eye"></i> Spectate';
-    spectateBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      window.location.href = `/room.html?roomId=${room.id}&spectate=1`;
-    });
-    devRow.appendChild(spectateBtn);
+    // Public rooms already have the everyone-eye next to Enter; keep a staff
+    // spectate button only where that eye isn't shown (semi-private).
+    if (room.type !== "public") {
+      const spectateBtn = document.createElement("button");
+      spectateBtn.type = "button";
+      spectateBtn.className = "lobby-dev-btn";
+      spectateBtn.innerHTML = '<i class="fas fa-eye"></i> Spectate';
+      spectateBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.location.href = `/room.html?roomId=${room.id}&spectate=1`;
+      });
+      devRow.appendChild(spectateBtn);
+    }
 
     if (currentUserIsDev) {
       const spotBtn = document.createElement("button");
@@ -1360,7 +1384,7 @@ function createRoomElement(room) {
       devRow.appendChild(spotBtn);
     }
 
-    roomElement.appendChild(devRow);
+    if (devRow.childNodes.length) roomElement.appendChild(devRow);
   }
 
   return roomElement;
@@ -2390,6 +2414,47 @@ socket.on("mod application result", (d) => {
       timeout: 7000,
     });
 });
+
+async function openSuggestBox() {
+  if (!window.StaffUI) return;
+  const r = await StaffUI.prompt({
+    title: "Suggest a feature",
+    icon: '<i class="fas fa-lightbulb"></i>',
+    subtitle: "Tell us what to build next",
+    message:
+      "Got an idea for Talkomatic? Send it here and the team will take a look.",
+    fields: [
+      {
+        name: "text",
+        label: "Your suggestion",
+        type: "textarea",
+        maxLength: 500,
+        required: true,
+        placeholder: "What should we add or change?",
+      },
+    ],
+    confirmText: "Send",
+  });
+  if (r && r.text) socket.emit("suggestion submit", { text: r.text });
+}
+const suggestBoxLink = document.getElementById("suggestBoxLink");
+if (suggestBoxLink)
+  suggestBoxLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    openSuggestBox();
+  });
+socket.on("suggestion result", (d) => {
+  if (!d) return;
+  if (d.ok)
+    lobbyNotify("Thanks! Your suggestion was sent.", "success", {
+      timeout: 6000,
+    });
+  else
+    lobbyNotify(d.error || "Could not send your suggestion.", "error", {
+      timeout: 6000,
+    });
+});
+
 // The server pushes this on connect (if an application exists) and on request.
 socket.on("mod application status", (d) => {
   myAppStatus = d && d.has ? d : null;

@@ -77,6 +77,9 @@ function gracefulFlush() {
     require("./server/appeals").flushSync();
   } catch (e) {}
   try {
+    require("./server/suggestions").flushSync();
+  } catch (e) {}
+  try {
     require("./server/banhistory").flushSync();
   } catch (e) {}
   try {

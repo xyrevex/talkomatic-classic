@@ -13,6 +13,8 @@ const fsp = require("fs").promises;
 
 const APPS_PATH = path.join(__dirname, "..", "mod-applications.json");
 const MAX = 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAILY_LIMIT = 3; // submissions per device per rolling 24h
 
 // { id, deviceId, ip, username, answers, submittedAt, status, reviewedBy,
 //   reviewedAt, reason, claimed }
@@ -51,10 +53,29 @@ function pendingForDevice(deviceId) {
   return apps.find((a) => a.deviceId === deviceId && a.status === "pending");
 }
 
-function submit({ deviceId, ip, username, answers }) {
+// How many times this device has submitted in the trailing window, counting
+// every status so re-applying after a rejection still adds up.
+function recentCountForDevice(deviceId, windowMs) {
+  if (!deviceId) return 0;
+  const cutoff = Date.now() - windowMs;
+  let n = 0;
+  for (const a of apps)
+    if (a.deviceId === deviceId && (a.submittedAt || 0) >= cutoff) n++;
+  return n;
+}
+
+function submit({ deviceId, ip, username, answers }, opts = {}) {
   if (!deviceId) return { ok: false, error: "This browser can't be identified." };
   if (pendingForDevice(deviceId))
     return { ok: false, error: "You already have an application pending." };
+  // Spam guard: 3 submissions in 24h locks further tries until the oldest of
+  // those ages out. The invite-milestone auto-file bypasses it.
+  if (!opts.system && recentCountForDevice(deviceId, DAY_MS) >= DAILY_LIMIT)
+    return {
+      ok: false,
+      error:
+        "You've sent too many applications recently. Please try again in 24 hours.",
+    };
   const app = {
     id: ++seq,
     deviceId,

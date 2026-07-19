@@ -661,6 +661,30 @@ html {
   cursor: not-allowed; /* Show not-allowed cursor */
 }
 
+/* Enter + spectate share one row at the top-right so they line up at the same height */
+.room-actions {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.room-actions .enter-button {
+  position: static;
+  top: auto;
+  right: auto;
+}
+.room-actions .spectate-button {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: talkoSS, Arial, sans-serif;
+  font-size: 14px;
+}
+
 /* Bottom section of the room */
 .room-bottom {
   font-size: 14px;

@@ -98,6 +98,26 @@ function isBlocked(ip) {
   return findActiveBlock(ip) !== null;
 }
 
+// A bare, valid IPv4 or IPv6 address? Rejects CIDR text ("1.2.3.4/24"), so a
+// typed range is refused and ranges stay opt-in via the checkbox.
+function isValidIp(ip) {
+  try {
+    return ipaddr.isValid(String(ip));
+  } catch (_) {
+    return false;
+  }
+}
+
+// Canonical form of a typed address so the stored key matches socket.clientIp
+// (which is already canonical). Returns null on anything unparseable.
+function normalizeIp(ip) {
+  try {
+    return ipaddr.parse(String(ip)).toString();
+  } catch (_) {
+    return null;
+  }
+}
+
 // Remove every block that applies to `ip`: the exact entry plus any CIDR range
 // that contains it. Used when a ban is lifted (e.g. a granted appeal) so a
 // range-banned user is actually let back in instead of silently staying blocked
@@ -124,5 +144,7 @@ module.exports = {
   matchesKey,
   findActiveBlock,
   isBlocked,
+  isValidIp,
+  normalizeIp,
   removeBlocksForIp,
 };

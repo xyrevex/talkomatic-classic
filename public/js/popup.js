@@ -6,7 +6,7 @@ class TalkomaticPopupManager {
   constructor() {
     // Current version - update this when you release new versions.
     // Bumping this re-shows the popup to everyone (see shouldShowPopup).
-    this.currentVersion = "5.2.0";
+    this.currentVersion = "5.3.0";
     // Cookie names
     this.cookieNames = {
       lastShown: "talkomatic_popup_last_shown",
@@ -463,16 +463,16 @@ class TalkomaticPopupManager {
                     <div class="talkomatic-popup-header">
                         <button class="talkomatic-popup-close" data-action="close">&times;</button>
                         <h2 class="talkomatic-popup-title"><i class="fas fa-wand-magic-sparkles"></i> What's New in Talkomatic</h2>
-                        <p class="talkomatic-popup-version">Reliability &amp; Fixes Update, ${currentDate}</p>
-                        <span class="talkomatic-version-pill">Version 5.2</span>
+                        <p class="talkomatic-popup-version">Spectate, Suggestions, Moderation &amp; Reliability, ${currentDate}</p>
+                        <span class="talkomatic-version-pill">Version 5.3</span>
                     </div>
 
                     <div class="talkomatic-popup-body">
 
                         <div class="talkomatic-update-section">
                             <div class="talkomatic-highlight-box">
-                                <h4>Smoother joins, fewer surprises</h4>
-                                <p>This update is all about the little things that get in the way. Joining a room is more reliable, emotes load more dependably, the ban screen behaves, and ban evasion is a lot harder. No new gimmicks, just a calmer Talkomatic.</p>
+                                <h4>A big one</h4>
+                                <p>This update brings features people asked for plus a pile of reliability work. You can now watch any public room without joining, send the team feature ideas straight from the lobby, and joining, emotes, and reconnecting are all steadier. Staff also picked up a proper set of tools behind the scenes.</p>
                             </div>
                         </div>
 
@@ -480,21 +480,30 @@ class TalkomaticPopupManager {
                             <h3><i class="fas fa-star"></i> The Highlights</h3>
                             <div class="talkomatic-feature-grid">
                                 <div class="talkomatic-feature-item">
+                                    <div class="talkomatic-feature-icon"><i class="fas fa-eye"></i></div>
+                                    <h4>Spectate Any Room</h4>
+                                    <p>Watch any public room read-only, right from the lobby. Look before you join, or just lurk. It even works when a room is full.</p>
+                                </div>
+                                <div class="talkomatic-feature-item">
+                                    <div class="talkomatic-feature-icon"><i class="fas fa-lightbulb"></i></div>
+                                    <h4>Suggest a Feature</h4>
+                                    <p>Got an idea for Talkomatic? Send it straight from the lobby menu and the team reviews every suggestion.</p>
+                                </div>
+                                <div class="talkomatic-feature-item">
                                     <div class="talkomatic-feature-icon"><i class="fas fa-right-to-bracket"></i></div>
                                     <h4>Joining Just Works</h4>
-                                    <p>No more being bounced back to the lobby when a room is nearly full, and no more missing text box that needed a refresh to appear.</p>
-                                </div>
-                                <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon"><i class="fas fa-face-smile"></i></div>
-                                    <h4>Emotes That Load</h4>
-                                    <p>Emotes now load more reliably and a hiccup on their end no longer wipes them all out until you refresh.</p>
-                                </div>
-                                <div class="talkomatic-feature-item">
-                                    <div class="talkomatic-feature-icon"><i class="fas fa-shield-halved"></i></div>
-                                    <h4>Tougher on Evaders</h4>
-                                    <p>Staff can now block a whole IPv6 range in one click, so people who dodge bans by rotating their address get stopped.</p>
+                                    <p>No more being bounced back to the lobby near a full room, and your text box now shows up every time you join.</p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="talkomatic-update-section">
+                            <h3><i class="fas fa-wand-magic-sparkles"></i> New for Everyone</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-eye tk-lic"></i> A spectate eye sits next to Enter on public rooms, so anyone can watch a room read-only without taking a seat <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-lightbulb tk-lic"></i> A "Suggest a feature" link in the lobby menu sends your idea to the team <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-plug-circle-check tk-lic"></i> If reconnecting to your room ever stalls, you now get a Rejoin button instead of an endless spinner <span class="talkomatic-badge improved">IMPROVED</span></li>
+                            </ul>
                         </div>
 
                         <div class="talkomatic-update-section">
@@ -507,26 +516,38 @@ class TalkomaticPopupManager {
                         </div>
 
                         <div class="talkomatic-update-section">
-                            <h3><i class="fas fa-shield-halved"></i> Moderation and Safety</h3>
-                            <ul class="talkomatic-feature-list tk-iconed">
-                                <li><i class="fas fa-network-wired tk-lic"></i> Staff can block an entire IPv6 range in one click, with the range worked out automatically, to stop evaders who rotate their address <span class="talkomatic-badge new">NEW</span></li>
-                                <li><i class="fas fa-circle-info tk-lic"></i> The ban screen no longer reloads itself in a loop after a repeat ban, and its appeal checks no longer trip the rate limiter <span class="talkomatic-badge fixed">FIXED</span></li>
-                                <li><i class="fas fa-user-secret tk-lic"></i> Your IP address stays private. Only developers can ever see it, never moderators or other users <span class="talkomatic-badge privacy">PRIVACY</span></li>
-                            </ul>
-                        </div>
-
-                        <div class="talkomatic-update-section">
                             <h3><i class="fas fa-face-smile"></i> Emotes</h3>
                             <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-icons tk-lic"></i> The Emoticons picker now fills in properly, even when emotes finish loading a moment after you open the room <span class="talkomatic-badge fixed">FIXED</span></li>
                                 <li><i class="fas fa-cloud-arrow-down tk-lic"></i> Emotes load with a timeout and a cleaner request, so a slow or blocked source no longer stalls the room <span class="talkomatic-badge improved">IMPROVED</span></li>
                                 <li><i class="fas fa-arrows-rotate tk-lic"></i> A momentary failure on the emote source keeps your existing emotes instead of dropping every one to plain text <span class="talkomatic-badge fixed">FIXED</span></li>
                             </ul>
                         </div>
 
                         <div class="talkomatic-update-section">
+                            <h3><i class="fas fa-shield-halved"></i> Moderation and Safety</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-ban tk-lic"></i> Staff can now ban an IP directly by typing it in, without needing to catch the user online first <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-people-group tk-lic"></i> The ban list shows which accounts have been seen behind each banned address <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-network-wired tk-lic"></i> Block an entire IPv6 range in one click, with the range worked out automatically, to stop evaders who rotate their address <span class="talkomatic-badge new">NEW</span></li>
+                                <li><i class="fas fa-lock tk-lic"></i> Semi-private rooms are tighter: moderators enter the access code like everyone else or watch via spectate, and only developers bypass it <span class="talkomatic-badge improved">IMPROVED</span></li>
+                                <li><i class="fas fa-circle-info tk-lic"></i> The ban screen no longer reloads itself in a loop after a repeat ban, and its appeal checks no longer trip the rate limiter <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-user-secret tk-lic"></i> Your IP address stays private. Only developers can ever see it, never moderators or other users <span class="talkomatic-badge privacy">PRIVACY</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
+                            <h3><i class="fas fa-bug-slash"></i> Also Fixed</h3>
+                            <ul class="talkomatic-feature-list tk-iconed">
+                                <li><i class="fas fa-user-clock tk-lic"></i> Moderator applications can no longer be spammed. Three tries in a day and the form takes a 24 hour breather <span class="talkomatic-badge fixed">FIXED</span></li>
+                                <li><i class="fas fa-compress tk-lic"></i> Shrinking a room's size now enforces the new limit instead of leaving the room over capacity <span class="talkomatic-badge fixed">FIXED</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="talkomatic-update-section">
                             <div class="talkomatic-highlight-box">
                                 <h4>Built with you</h4>
-                                <p>Talkomatic is open source and shaped by community feedback. Report a bug, suggest an idea, or just hang out with us on Discord. Thanks for typing letter by letter with us.</p>
+                                <p>Talkomatic is open source and shaped by community feedback. Report a bug, suggest an idea from the lobby, or just hang out with us on Discord. Thanks for typing letter by letter with us.</p>
                             </div>
                         </div>
 

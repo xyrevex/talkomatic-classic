@@ -48,6 +48,7 @@
   const APPS_PAGE = 8;
   let reportsList = [];
   let appealsList = []; // ban appeals (Appeals tab)
+  let suggestionsList = []; // feature suggestions (Suggestions tab)
   let invitesList = []; // flagged inviters (Invites tab)
   let invitesPage = 0;
   const INV_PAGE = 12;
@@ -274,7 +275,9 @@
               ? "mod application"
               : e.kind === "invite"
                 ? "invite milestone"
-                : "user report",
+                : e.kind === "suggestion"
+                  ? "feature suggestion"
+                  : "user report",
         ),
       );
     } else {
@@ -725,6 +728,36 @@
     );
     card.appendChild(msg);
 
+    // Accounts seen behind this IP/range, so staff know who a ban hits.
+    const seen = divc("bc-msg" + (b.userCount ? "" : " none"));
+    seen.appendChild(
+      span("lbl", "Seen accounts" + (b.userCount ? " (" + b.userCount + ")" : "")),
+    );
+    if (b.userCount && b.users && b.users.length) {
+      const names = b.users
+        .map((u) => u.name || "Unknown")
+        .slice(0, 12)
+        .join(", ");
+      seen.appendChild(document.createTextNode(names));
+      if (isDev)
+        b.users.slice(0, 12).forEach((u) => {
+          const line = span("mono", "");
+          line.appendChild(
+            document.createTextNode((u.name || "Unknown") + "  id: " + (u.id || "?")),
+          );
+          if (u.ips && u.ips.length) {
+            line.appendChild(document.createTextNode("  IP: "));
+            line.appendChild(span("ip", u.ips.join(", ")));
+          }
+          seen.appendChild(line);
+        });
+    } else {
+      seen.appendChild(
+        document.createTextNode("No known accounts for this address yet."),
+      );
+    }
+    card.appendChild(seen);
+
     // Actions: re-time / edit message (dev), then unban
     const foot = divc("bc-foot");
     if (isDev) {
@@ -1169,6 +1202,60 @@
     });
   }
 
+  function openBanIpDialog() {
+    if (!window.StaffUI) return;
+    const isDev = me && me.role === "dev";
+    const durations = [
+      { value: "1h", label: "1 hour" },
+      { value: "24h", label: "24 hours" },
+      { value: "7d", label: "7 days" },
+    ];
+    if (isDev) durations.push({ value: "permanent", label: "Permanent" });
+    StaffUI.prompt({
+      title: "Ban an IP",
+      icon: '<i class="fas fa-ban"></i>',
+      message: "Blocks the address right away and disconnects anyone on it.",
+      fields: [
+        {
+          name: "ip",
+          label: "IP address (IPv4 or IPv6)",
+          type: "text",
+          required: true,
+          placeholder: "e.g. 203.0.113.7 or 2001:db8::1",
+        },
+        {
+          name: "duration",
+          label: "Duration",
+          type: "select",
+          options: durations,
+          value: "24h",
+        },
+        {
+          name: "banRange",
+          type: "checkbox",
+          label: "Also block the whole IPv6 /64 range",
+          help: "IPv6 only, stops them rotating their address. No effect on IPv4.",
+        },
+        {
+          name: "reason",
+          label: "Message shown to them (optional)",
+          type: "textarea",
+          maxLength: 500,
+          placeholder: "e.g. Ban evasion.",
+        },
+      ],
+      confirmText: "Ban IP",
+    }).then((v) => {
+      if (!v || !v.ip || !v.ip.trim()) return;
+      socket.emit("staff ban ip", {
+        ip: v.ip.trim(),
+        duration: v.duration || "24h",
+        reason: (v.reason || "").trim(),
+        banRange: !!v.banRange,
+      });
+    });
+  }
+
   // Warn a reported user (works whether they are online or offline; the server
   // delivers now or queues it for their next connect).
   async function warnReported(r) {
@@ -1266,6 +1353,19 @@
       if (r.last)
         meta.appendChild(span(null, "last report " + relTime(r.last)));
       idCol.appendChild(meta);
+      // Device id (all staff) and IP (dev-only), same mono line as the appeals card.
+      if (r.targetDeviceId || r.ip) {
+        const idLine = span("mono", "");
+        if (r.targetDeviceId)
+          idLine.appendChild(document.createTextNode("id: " + r.targetDeviceId));
+        if (r.ip) {
+          if (r.targetDeviceId)
+            idLine.appendChild(document.createTextNode("   "));
+          idLine.appendChild(document.createTextNode("IP: "));
+          idLine.appendChild(span("ip", r.ip));
+        }
+        idCol.appendChild(idLine);
+      }
       head.appendChild(idCol);
       card.appendChild(head);
 
@@ -1592,6 +1692,130 @@
           resolveAppeal(a, "dismiss");
         });
         actions.appendChild(dismiss);
+        foot.appendChild(actions);
+      }
+      card.appendChild(foot);
+      wrap.appendChild(card);
+    });
+  }
+
+  function resolveSuggestion(s, decision) {
+    socket.emit("staff resolve suggestion", { id: s.id, decision });
+  }
+
+  function renderSuggestions() {
+    const wrap = $("suggestionsList");
+    if (!wrap) return;
+    wrap.textContent = "";
+    const open = suggestionsList.filter((s) => s.status === "open");
+    const badge = $("suggestionsBadge");
+    if (badge) badge.textContent = String(open.length);
+    const sub = $("suggestionsSub");
+    if (sub)
+      sub.textContent = open.length
+        ? open.length +
+          " open suggestion" +
+          (open.length === 1 ? "" : "s") +
+          (suggestionsList.length > open.length
+            ? "  ·  " + suggestionsList.length + " total"
+            : "")
+        : suggestionsList.length
+          ? "No open suggestions  ·  " + suggestionsList.length + " reviewed"
+          : "No suggestions yet";
+    if (!suggestionsList.length) {
+      wrap.appendChild(emptyBox("fa-lightbulb", "No suggestions yet."));
+      return;
+    }
+
+    suggestionsList.forEach((s) => {
+      const card = divc(
+        "appealcard" + (s.status === "resolved" ? " resolved" : ""),
+      );
+
+      const head = divc("ap-head");
+      const av = divc("avatar");
+      av.style.background = s.status === "open" ? "var(--amber)" : "var(--line)";
+      av.textContent = initialOf(s.name);
+      head.appendChild(av);
+      const idc = divc("ap-id");
+      idc.appendChild(span("ap-kicker", "Suggested by"));
+      let nameNode;
+      if (s.userId) {
+        nameNode = uref(s.name || "user", s.userId);
+        nameNode.classList.add("nm");
+      } else {
+        nameNode = span("nm", s.name || "A user");
+      }
+      idc.appendChild(nameNode);
+      const meta = divc("ap-meta");
+      if (s.at) {
+        const t = span(null, "sent " + relTime(s.at));
+        t.title = fmtTime(s.at);
+        meta.appendChild(t);
+      }
+      idc.appendChild(meta);
+      head.appendChild(idc);
+      card.appendChild(head);
+
+      const box = divc("ap-box");
+      const bl = divc("lbl");
+      bl.appendChild(icon("fa-lightbulb"));
+      bl.appendChild(document.createTextNode(" Suggestion"));
+      box.appendChild(bl);
+      const bv = divc("val" + (s.text ? "" : " none"));
+      bv.textContent = s.text || "No text.";
+      box.appendChild(bv);
+      card.appendChild(box);
+
+      const foot = divc("ap-foot");
+      const info = divc("ap-info");
+      if (s.status === "resolved") {
+        info.appendChild(
+          span(
+            null,
+            (s.resolution === "approved" ? "Approved" : "Declined") +
+              (s.reviewedBy ? " by " + cleanReviewer(s.reviewedBy) : "") +
+              (s.reviewedAt ? " · " + relTime(s.reviewedAt) : ""),
+          ),
+        );
+      }
+      foot.appendChild(info);
+
+      if (s.status === "open") {
+        const actions = divc("ap-actions");
+        const approve = document.createElement("button");
+        approve.className = "btn sm primary";
+        approve.appendChild(icon("fa-check"));
+        approve.appendChild(document.createTextNode(" Approve"));
+        approve.addEventListener("click", async () => {
+          if (window.StaffUI) {
+            const ok = await StaffUI.confirm({
+              title: "Approve suggestion",
+              message: "Mark this suggestion as approved?",
+              confirmText: "Approve",
+            });
+            if (!ok) return;
+          }
+          resolveSuggestion(s, "approve");
+        });
+        actions.appendChild(approve);
+        const decline = document.createElement("button");
+        decline.className = "btn sm danger";
+        decline.appendChild(icon("fa-xmark"));
+        decline.appendChild(document.createTextNode(" Decline"));
+        decline.addEventListener("click", async () => {
+          if (window.StaffUI) {
+            const ok = await StaffUI.confirm({
+              title: "Decline suggestion",
+              danger: true,
+              message: "Decline this suggestion?",
+              confirmText: "Decline",
+            });
+            if (!ok) return;
+          }
+          resolveSuggestion(s, "decline");
+        });
+        actions.appendChild(decline);
         foot.appendChild(actions);
       }
       card.appendChild(foot);
@@ -2298,6 +2522,7 @@
     if (name === "applications") socket.emit("mod applications list");
     if (name === "reports") socket.emit("staff get reports");
     if (name === "appeals") socket.emit("staff get appeals");
+    if (name === "suggestions") socket.emit("staff get suggestions");
     if (name === "invites") socket.emit("staff get invite report");
     if (window.innerWidth <= 860) document.body.classList.add("nav-closed");
   }
@@ -2324,6 +2549,7 @@
     if (!fullMod && tab === "applications") switchTab("activity");
     renderApplicationsToggle();
     if (!fullMod && tab === "reports") switchTab("activity");
+    if (!fullMod && tab === "suggestions") switchTab("activity");
     if (!fullMod && tab === "invites") switchTab("activity");
     if (!fullMod && feedFilter === "notification") {
       feedFilter = "all";
@@ -2440,6 +2666,11 @@
   socket.on("staff appeals", (list) => {
     appealsList = Array.isArray(list) ? list : [];
     renderAppeals();
+  });
+
+  socket.on("staff suggestions", (list) => {
+    suggestionsList = Array.isArray(list) ? list : [];
+    renderSuggestions();
   });
 
   socket.on("staff invite report", (list) => {
@@ -2590,6 +2821,7 @@
     socket.emit("dev list blocks");
     socket.emit("staff get ban history");
   });
+  $("banIpBtn") && $("banIpBtn").addEventListener("click", openBanIpDialog);
   $("modsRefresh").addEventListener("click", () =>
     socket.emit("dev list mod keys"),
   );
@@ -2613,6 +2845,10 @@
   $("appealsRefresh") &&
     $("appealsRefresh").addEventListener("click", () =>
       socket.emit("staff get appeals"),
+    );
+  $("suggestionsRefresh") &&
+    $("suggestionsRefresh").addEventListener("click", () =>
+      socket.emit("staff get suggestions"),
     );
   $("invitesRefresh") &&
     $("invitesRefresh").addEventListener("click", () => {

@@ -37,6 +37,7 @@ const applications = require("./applications");
 const invites = require("./invites");
 const reports = require("./reports");
 const appeals = require("./appeals");
+const suggestions = require("./suggestions");
 const banhistory = require("./banhistory");
 const blocklist = require("./blocklist");
 const ipban = require("./ipban");
@@ -675,13 +676,16 @@ function resolveOfflineTarget(targetUserId) {
 // row per reported user, with the live name/room resolved when they are online.
 // For offline users we flag whether the server still has an IP on file, so the
 // board can offer an IP block without ever sending the address to the client.
-function buildReportsList() {
+function buildReportsList(forDev) {
   return reports.summary().map((s) => {
     const targets = findSocketsByUserId(s.targetKey);
     const online = targets.length > 0;
     let name = s.name;
     let roomName = null;
     let canBanOffline = false;
+    const lk = reports.lastKnown(s.targetKey) || {};
+    let targetDeviceId = lk.deviceId || null;
+    let targetIp = lk.ip || null;
     if (online) {
       const rid = getUserCurrentRoom(s.targetKey);
       const room = rid ? state.rooms.get(rid) : null;
@@ -689,13 +693,19 @@ function buildReportsList() {
       name =
         (u && u.username) || targets[0].handshake?.session?.username || name;
       roomName = room?.name || null;
+      targetIp = targets[0].clientIp || targetIp;
+      targetDeviceId = targets[0].deviceId || targetDeviceId;
     } else {
       const off = resolveOfflineTarget(s.targetKey);
       canBanOffline = !!off?.ip;
       if (off?.name) name = off.name;
+      targetIp = off?.ip || targetIp;
+      targetDeviceId = off?.deviceId || targetDeviceId;
     }
     return {
       targetUserId: s.targetKey,
+      targetDeviceId,
+      ip: forDev ? targetIp : undefined,
       name: name || "(unknown user)",
       total: s.total,
       distinct: s.distinct,
@@ -761,6 +771,29 @@ function broadcastAppealsList() {
   for (const [, s] of io().sockets.sockets)
     if (s.isModLog && (s.isDev || (s.isMod && (s.modLevel || 2) >= 2)))
       s.emit("staff appeals", buildAppealsList(!!s.isDev));
+}
+
+// Feature suggestions for the dashboard. IP is never stored, so nothing here is
+// dev-only, but keep the forDev arg for symmetry with the other boards.
+function buildSuggestionsList(forDev) {
+  return suggestions.list().map((s) => ({
+    id: s.id,
+    name: s.name || null,
+    userId: forDev ? s.userId || null : undefined,
+    text: s.text || "",
+    at: s.at,
+    status: s.status,
+    resolution: s.resolution || null,
+    reviewedBy: s.reviewedBy || null,
+    reviewedAt: s.reviewedAt || null,
+  }));
+}
+
+function broadcastSuggestionsList() {
+  if (!io()) return;
+  for (const [, s] of io().sockets.sockets)
+    if (s.isModLog && (s.isDev || (s.isMod && (s.modLevel || 2) >= 2)))
+      s.emit("staff suggestions", buildSuggestionsList(!!s.isDev));
 }
 
 // Called from the HTTP appeal route after an appeal is filed: drop a staff
@@ -882,10 +915,9 @@ function broadcastApplicationsState() {
 // reports and online/offline changes appear live without a manual refresh.
 function broadcastReportsList() {
   if (!io()) return;
-  const list = buildReportsList();
   for (const [, s] of io().sockets.sockets)
     if (s.isModLog && (s.isDev || (s.isMod && (s.modLevel || 2) >= 2)))
-      s.emit("staff reports", list);
+      s.emit("staff reports", buildReportsList(!!s.isDev));
 }
 
 // Push the IP ban list to every open dashboard (full mods + devs). Each socket
@@ -950,15 +982,18 @@ function handleInviteCredit(socket) {
     // Respect the dev kill switch: no new applications (auto-filed or not) while
     // the intake is closed.
     if (state.applicationsOpen && !applications.pendingForDevice(inviterId)) {
-      applications.submit({
-        deviceId: inviterId,
-        ip: null,
-        username: inviterName,
-        answers: {
-          why: `Earned automatically by inviting ${res.newCount} active members.`,
-          availability: "",
+      applications.submit(
+        {
+          deviceId: inviterId,
+          ip: null,
+          username: inviterName,
+          answers: {
+            why: `Earned automatically by inviting ${res.newCount} active members.`,
+            availability: "",
+          },
         },
-      });
+        { system: true },
+      );
       broadcastAppsList();
     }
     audit.recordNotification({
@@ -991,6 +1026,10 @@ function buildBlockList(forDev) {
   for (const [ip, b] of state.blockedIPs) {
     const expiry = b && typeof b === "object" ? b.expiry : b;
     if (expiry && expiry !== Number.MAX_SAFE_INTEGER && now >= expiry) continue;
+    // Accounts seen behind this address/range, so staff can see who they hit.
+    const matched = identity.devicesMatching((addr) =>
+      ipban.matchesKey(addr, ip),
+    );
     out.push({
       ip: forDev ? ip : undefined,
       ref: banRef(ip),
@@ -1001,6 +1040,12 @@ function buildBlockList(forDev) {
       expiry: expiry || 0,
       ts: (b && typeof b === "object" && b.ts) || null,
       bans: banhistory.countBans(ip),
+      userCount: matched.length,
+      users: matched.map((d) =>
+        forDev
+          ? { id: d.id, name: d.name, ips: d.ips, last: d.last }
+          : { name: d.name || "Unknown", last: d.last },
+      ),
     });
   }
   return out;
@@ -1183,6 +1228,30 @@ function filterUsersForSocket(users, recipientSocket) {
   return (users || [])
     .map((user) => formatUserForSocket(user, recipientSocket))
     .filter(Boolean);
+}
+
+// The "spectate joined" payload, filtered for this recipient. A non-staff
+// spectator's socket has isDev/isMod false, so the filters strip vanished devs
+// and staff flair for free.
+function spectatePayload(socket, room) {
+  const createdAt = room.createdAt || room.lastActiveTime || 0;
+  return {
+    roomId: room.id,
+    roomName: room.name,
+    roomType: room.type,
+    layout: room.layout,
+    isDev: !!socket.isDev,
+    isMod: !!socket.isMod,
+    modLevel: socket.isMod ? socket.modLevel || 2 : 0,
+    locked: !!room.locked,
+    slowMode: !!room.slowMode,
+    spotlight: !!room.spotlight,
+    users: filterUsersForSocket(room.users || [], socket),
+    votes: filterVotesForSocket(room, socket),
+    currentMessages: filterCurrentMessagesForSocket(room, socket),
+    createdAt: createdAt,
+    uptime: Date.now() - createdAt,
+  };
 }
 
 // Votes involving invisible (vanished) users are hidden from non-devs
@@ -3273,12 +3342,10 @@ function registerSocketHandlers() {
           }
         }
 
-        // Semi-private rooms: session-validated codes skip the prompt.
-        // Devs and full (level 2) mods bypass the code entirely (join bypass
-        // only - the codes themselves stay hidden from them). Junior (level 1)
-        // mods do NOT bypass: they must enter the code like a normal user.
-        const bypassAccessCode =
-          socket.isDev || (socket.isMod && (socket.modLevel || 2) >= 2);
+        // Semi-private rooms: session-validated codes skip the prompt. Only devs
+        // bypass the code (they can see codes anyway); mods enter it like a normal
+        // user, or moderate read-only via spectate, which needs no code.
+        const bypassAccessCode = socket.isDev;
         if (room.type === "semi-private" && !bypassAccessCode) {
           const validated =
             socket.handshake.session.validatedRooms?.[data.roomId];
@@ -3904,6 +3971,105 @@ function registerSocketHandlers() {
       }),
     );
 
+    // Ban an IP directly by typing it in - no target user required. Full mods +
+    // devs; permanent is dev-only. Takes effect immediately.
+    socket.on(
+      "staff ban ip",
+      safe(async (data) => {
+        if (!requireStaff(socket)) return;
+        if (!requireModLevel(socket, 2)) return;
+        const raw = typeof data?.ip === "string" ? data.ip.trim() : "";
+        if (!ipban.isValidIp(raw))
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.BAD_REQUEST,
+              "Enter a valid IPv4 or IPv6 address.",
+            ),
+          );
+        const ip = ipban.normalizeIp(raw);
+        const duration = data?.duration;
+        const DURATIONS = { "1h": 3600000, "24h": 86400000, "7d": 604800000 };
+        let ms;
+        if (duration === "permanent") {
+          if (!socket.isDev)
+            return socket.emit(
+              "error",
+              createErrorResponse(
+                ERROR_CODES.FORBIDDEN,
+                "Only devs can place permanent IP blocks.",
+              ),
+            );
+          ms = Infinity;
+        } else if (DURATIONS[duration] !== undefined) {
+          ms = DURATIONS[duration];
+        } else {
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.BAD_REQUEST,
+              "Invalid duration. Use 1h, 24h, 7d" +
+              (socket.isDev ? ", or permanent." : "."),
+            ),
+          );
+        }
+        const expiry =
+          ms === Infinity ? Number.MAX_SAFE_INTEGER : Date.now() + ms;
+        const reason =
+          sanitizeMessage(
+            typeof data?.reason === "string" ? data.reason : "",
+          ).slice(0, 500) || null;
+        const cidr = data?.banRange ? ipban.computeRangeCidr(ip) : null;
+        const blockKey = cidr || ip;
+        state.blockedIPs.set(blockKey, {
+          expiry,
+          label: null,
+          by: socket.staffLabel || null,
+          ts: Date.now(),
+          reason,
+        });
+        blocklist.saveSoon();
+        banhistory.record({
+          ip: blockKey,
+          name: null,
+          action: "ban",
+          by: socket.staffLabel || null,
+          reason,
+          duration,
+        });
+        broadcastBlockList();
+        broadcastBanHistory();
+        const affected = cidr
+          ? [...io().sockets.sockets.values()].filter((s) =>
+            ipban.ipInCidr(s.clientIp, cidr),
+          )
+          : findSocketsByIp(ip);
+        for (const s of affected) {
+          try {
+            const uid = s.handshake?.session?.userId;
+            s.emit("kicked", {
+              message: "Your connection has been blocked by staff.",
+            });
+            if (s.roomId && uid) await leaveRoom(s, uid);
+            s.disconnect(true);
+          } catch (_) { }
+        }
+        logStaff(
+          socket,
+          `ban ip ${duration}${cidr ? " (range)" : ""}`,
+          socket.isDev ? blockKey : "ip",
+          "-",
+          reason || undefined,
+        );
+        socket.emit("staff action result", {
+          action: "ban ip",
+          ok: true,
+          duration,
+          rangeApplied: !!cidr,
+        });
+      }),
+    );
+
     // ── Close room: kick everyone and delete (mod + dev) ────────────────
     socket.on(
       "staff close room",
@@ -4351,26 +4517,52 @@ function registerSocketHandlers() {
         socket.spectating = roomId;
         socket.roomId = roomId;
 
-        const createdAt = room.createdAt || room.lastActiveTime || 0;
-        socket.emit("spectate joined", {
-          roomId: room.id,
-          roomName: room.name,
-          roomType: room.type,
-          layout: room.layout,
-          isDev: !!socket.isDev,
-          isMod: !!socket.isMod,
-          modLevel: socket.isMod ? socket.modLevel || 2 : 0,
-          locked: !!room.locked,
-          slowMode: !!room.slowMode,
-          spotlight: !!room.spotlight,
-          users: filterUsersForSocket(room.users || [], socket),
-          votes: filterVotesForSocket(room, socket),
-          currentMessages: filterCurrentMessagesForSocket(room, socket),
-          createdAt: createdAt,
-          uptime: Date.now() - createdAt
-        });
+        socket.emit("spectate joined", spectatePayload(socket, room));
         sendDevRoomContext(roomId);
         logStaff(socket, "spectate", null, room);
+      }),
+    );
+
+    // Public read-only spectate: anyone can watch a PUBLIC room. Semi-private
+    // and private rooms need the access code, so non-staff can't spectate them.
+    // Spectators never enter room.users, so this works even on a full room.
+    socket.on(
+      "spectate room",
+      safe(async (data) => {
+        const roomId = data?.roomId;
+        const room = roomId ? state.rooms.get(roomId) : null;
+        if (!room)
+          return socket.emit(
+            "error",
+            createErrorResponse(ERROR_CODES.NOT_FOUND, "Room not found."),
+          );
+        const staff = isStaffSocket(socket);
+        if (!staff && room.type !== "public")
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.FORBIDDEN,
+              "You can only spectate public rooms.",
+            ),
+          );
+        if (socket.roomId && !socket.spectating)
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.FORBIDDEN,
+              "Leave your current room before spectating.",
+            ),
+          );
+        socket.leave("lobby");
+        socket.join(roomId);
+        socket.spectating = roomId;
+        socket.roomId = roomId;
+
+        socket.emit("spectate joined", spectatePayload(socket, room));
+        if (staff) {
+          sendDevRoomContext(roomId);
+          logStaff(socket, "spectate", null, room);
+        }
       }),
     );
 
@@ -4523,6 +4715,28 @@ function registerSocketHandlers() {
           );
         n = Math.max(2, Math.min(50, n));
         room.maxSize = n;
+        // Shrinking below current occupancy would leave the room over capacity
+        // with no one removed, so evict the newest non-staff users past the new
+        // cap. Staff are never evicted.
+        const cap = roomCapacity(room);
+        const joinable = (room.users || []).filter(
+          (u) => !(u.isDev && u.isVanished),
+        );
+        const over = joinable.length - cap;
+        if (over > 0) {
+          const evictable = (room.users || []).filter(
+            (u) => !(u.isDev || u.isMod),
+          );
+          for (const u of evictable.slice(-over)) {
+            const s = findSocketByUserId(u.id, roomId);
+            if (s) {
+              s.emit("kicked", { message: "The room size was reduced by staff." });
+              await leaveRoom(s, u.id);
+            } else {
+              room.users = room.users.filter((x) => x.id !== u.id);
+            }
+          }
+        }
         updateRoom(roomId);
         updateLobby();
         state.apiCache.delete("public_rooms");
@@ -5141,7 +5355,7 @@ function registerSocketHandlers() {
       "staff get reports",
       safe(async () => {
         if (!requireModLevel(socket, 2)) return;
-        socket.emit("staff reports", buildReportsList());
+        socket.emit("staff reports", buildReportsList(!!socket.isDev));
       }),
     );
 
@@ -5163,7 +5377,7 @@ function registerSocketHandlers() {
           { name: before?.name || "?", id: targetUserId },
           "-",
         );
-        socket.emit("staff reports", buildReportsList());
+        socket.emit("staff reports", buildReportsList(!!socket.isDev));
       }),
     );
 
@@ -5224,6 +5438,77 @@ function registerSocketHandlers() {
         }
         broadcastAppealsList();
         socket.emit("staff appeals", buildAppealsList(!!socket.isDev));
+      }),
+    );
+
+    // ── Suggestions: any lobby user files a feature idea; full mods + devs
+    // review them in the dashboard. ──
+    socket.on(
+      "suggestion submit",
+      safe(async (data) => {
+        const now = Date.now();
+        if (now - (socket._lastSuggestion || 0) < 30000)
+          return socket.emit("suggestion result", {
+            ok: false,
+            error: "Please wait a bit before sending another suggestion.",
+          });
+        const text = sanitizeMessage(
+          typeof data?.text === "string" ? data.text : "",
+        ).slice(0, 500);
+        if (text.trim().length < 3)
+          return socket.emit("suggestion result", {
+            ok: false,
+            error: "Please write a little more.",
+          });
+        socket._lastSuggestion = now;
+        const name = socket.handshake.session?.username || null;
+        suggestions.submit({
+          deviceId: socket.deviceId || null,
+          userId: socket.handshake.session?.userId || null,
+          name,
+          text,
+        });
+        audit.recordNotification({
+          kind: "suggestion",
+          text: `${name || "A user"} suggested: ${text}`,
+          by: name,
+          minLevel: 2,
+        });
+        broadcastSuggestionsList();
+        socket.emit("suggestion result", { ok: true });
+      }),
+    );
+
+    socket.on(
+      "staff get suggestions",
+      safe(async () => {
+        if (!requireModLevel(socket, 2)) return;
+        socket.emit("staff suggestions", buildSuggestionsList(!!socket.isDev));
+      }),
+    );
+
+    socket.on(
+      "staff resolve suggestion",
+      safe(async (data) => {
+        if (!requireModLevel(socket, 2)) return;
+        const id = Number(data?.id);
+        const decision = data?.decision === "approve" ? "approved" : "declined";
+        const s = suggestions.get(id);
+        if (!s)
+          return socket.emit(
+            "error",
+            createErrorResponse(ERROR_CODES.BAD_REQUEST, "No such suggestion."),
+          );
+        const reviewer = `${socket.isDev ? "dev" : "mod"}:${socket.staffLabel || ""}`;
+        suggestions.resolve(id, decision, reviewer);
+        logStaff(
+          socket,
+          decision === "approved" ? "approve suggestion" : "decline suggestion",
+          { name: s.name || "?", id: s.userId || s.deviceId || "-" },
+          "-",
+        );
+        broadcastSuggestionsList();
+        socket.emit("staff suggestions", buildSuggestionsList(!!socket.isDev));
       }),
     );
 

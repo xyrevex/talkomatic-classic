@@ -1868,6 +1868,10 @@
             <i class="fas fa-scale-balanced"></i> Appeals
             <span class="ni-badge" id="appealsBadge">0</span>
           </button>
+          <button class="nav-item" data-tab="suggestions" data-min2>
+            <i class="fas fa-lightbulb"></i> Suggestions
+            <span class="ni-badge" id="suggestionsBadge">0</span>
+          </button>
           <button class="nav-item" data-tab="bans" data-min2>
             <i class="fas fa-ban"></i> Ban list
             <span class="ni-badge" id="bansBadge">0</span>
@@ -2049,12 +2053,39 @@
           <div id="appealsList" class="cards"></div>
         </section>
 
+        <!-- Suggestions -->
+        <section id="tab-suggestions" class="panel">
+          <div class="panel-head">
+            <h1><i class="fas fa-lightbulb"></i> Suggestions</h1>
+            <span class="sub" id="suggestionsSub">
+              Feature ideas sent from the lobby
+            </span>
+            <div class="ph-actions">
+              <button id="suggestionsRefresh" class="btn sm">
+                <i class="fas fa-arrows-rotate"></i> Refresh
+              </button>
+            </div>
+          </div>
+          <p class="reports-note">
+            <i class="fas fa-circle-info"></i>
+            <span>
+              Each card is one feature suggestion from a user. Approve the ones
+              worth building or decline the rest. This is just for triage, it
+              does not notify the user.
+            </span>
+          </p>
+          <div id="suggestionsList" class="cards"></div>
+        </section>
+
         <!-- Bans -->
         <section id="tab-bans" class="panel">
           <div class="panel-head">
             <h1><i class="fas fa-ban"></i> Ban list</h1>
             <span class="sub" id="bansSub">IP blocks placed by staff</span>
             <div class="ph-actions">
+              <button id="banIpBtn" class="btn sm primary">
+                <i class="fas fa-plus"></i> Ban an IP
+              </button>
               <button id="bansRefresh" class="btn sm">
                 <i class="fas fa-arrows-rotate"></i> Refresh
               </button>
@@ -2289,6 +2320,6 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/staff-ui.js?v=1.5.5"></script>
-    <script src="js/mod.js?v=3.9.3"></script>
+    <script src="js/mod.js?v=3.9.5"></script>
   </body>
 </html>

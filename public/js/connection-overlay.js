@@ -7,6 +7,7 @@
   "use strict";
   var restarting = false;
   var reconnectTimer = null;
+  var buttonsTimer = null;
   // When true (the room page), a restart does NOT redirect to the lobby - it
   // shows an "updating" notice and lets Socket.IO reconnect, so the client can
   // rejoin the same room in place. The lobby leaves this false and keeps the
@@ -29,8 +30,10 @@
       "#tkConnOverlay .tk-conn-bar span{display:block;height:100%;width:0;background:#ff9800;transition:width 1s linear;}" +
       "#tkConnOverlay .tk-conn-spinner{width:42px;height:42px;border:4px solid #333;border-top-color:#ff9800;" +
       "border-radius:50%;margin:0 auto 16px;animation:tkConnSpin 1s linear infinite;}" +
-      "#tkConnOverlay button{margin-top:18px;background:#ff9800;color:#000;border:none;border-radius:5px;" +
+      "#tkConnOverlay .tk-conn-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px;}" +
+      "#tkConnOverlay button{background:#ff9800;color:#000;border:none;border-radius:5px;" +
       "padding:10px 18px;font-size:14px;font-weight:bold;cursor:pointer;font-family:inherit;}" +
+      "#tkConnOverlay button.tk-conn-ghost{background:transparent;color:#ddd;border:1px solid #616161;}" +
       "@keyframes tkConnSpin{to{transform:rotate(360deg);}}";
     document.head.appendChild(st);
   }
@@ -72,6 +75,14 @@
     })();
   }
 
+  function actionButton(label, ghost, onClick) {
+    var b = document.createElement("button");
+    b.textContent = label;
+    if (ghost) b.className = "tk-conn-ghost";
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
   function showReconnecting() {
     if (restarting) return;
     styles();
@@ -79,13 +90,19 @@
     o.innerHTML =
       '<div class="tk-conn-box"><div class="tk-conn-spinner"></div>' +
       '<div class="tk-conn-title">Reconnecting…</div>' +
-      '<div class="tk-conn-msg">Lost connection to Talkomatic. Trying to reconnect…</div></div>';
-    var btn = document.createElement("button");
-    btn.textContent = "Return to lobby";
-    btn.addEventListener("click", function () {
-      window.location.href = "/";
-    });
-    o.querySelector(".tk-conn-box").appendChild(btn);
+      '<div class="tk-conn-msg">Lost connection to Talkomatic. Trying to reconnect…</div>' +
+      '<div class="tk-conn-actions"></div></div>';
+    var actions = o.querySelector(".tk-conn-actions");
+    actions.appendChild(
+      actionButton("Refresh", false, function () {
+        window.location.reload();
+      }),
+    );
+    actions.appendChild(
+      actionButton("Return to lobby", true, function () {
+        window.location.href = "/";
+      }),
+    );
     o.style.display = "flex";
   }
 
@@ -100,25 +117,41 @@
       '<div class="tk-conn-box"><div class="tk-conn-spinner"></div>' +
       '<div class="tk-conn-title">Talkomatic is updating</div>' +
       '<div class="tk-conn-msg">Reconnecting you to your room. Hold tight, ' +
-      "this only takes a moment.</div></div>";
-    // Surface an escape hatch only if the reconnect is taking too long, so a
-    // failed deploy never strands anyone in the spinner.
-    var btn = document.createElement("button");
-    btn.textContent = "Return to lobby";
-    btn.style.display = "none";
-    btn.addEventListener("click", function () {
-      window.location.href = "/";
-    });
-    o.querySelector(".tk-conn-box").appendChild(btn);
+      "this only takes a moment.</div>" +
+      '<div class="tk-conn-actions" style="display:none"></div></div>';
+    // If the auto-rejoin stalls, give the user a reliable way out instead of an
+    // endless spinner. Rejoin reloads the page, which always re-enters the room.
+    var actions = o.querySelector(".tk-conn-actions");
+    actions.appendChild(
+      actionButton("Rejoin room", false, function () {
+        window.location.reload();
+      }),
+    );
+    actions.appendChild(
+      actionButton("Return to lobby", true, function () {
+        window.location.href = "/";
+      }),
+    );
     o.style.display = "flex";
-    clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(function () {
-      btn.style.display = "";
-    }, 8000);
+    clearTimeout(buttonsTimer);
+    buttonsTimer = setTimeout(function () {
+      actions.style.display = "";
+    }, 5000);
   }
 
   function hide() {
     if (restarting) return;
+    clearTimeout(buttonsTimer);
+    var o = document.getElementById("tkConnOverlay");
+    if (o) o.style.display = "none";
+  }
+
+  // Called by the room client once it is genuinely back in the room. Forces the
+  // overlay closed even while the restarting latch is set.
+  function recovered() {
+    clearTimeout(reconnectTimer);
+    clearTimeout(buttonsTimer);
+    restarting = false;
     var o = document.getElementById("tkConnOverlay");
     if (o) o.style.display = "none";
   }
@@ -138,12 +171,16 @@
         reconnectTimer = setTimeout(showReconnecting, 1200); // grace for blips
       });
       socket.on("connect", function () {
-        // A successful (re)connect ends any restart/reconnect notice. Clearing
-        // the restarting flag lets hide() actually close the overlay.
         clearTimeout(reconnectTimer);
+        // On the room page the socket being back is not enough: we stay on the
+        // notice until the room rejoin lands (recovered() from "room joined"),
+        // so a reconnect that fails to restore the room doesn't leave a blank
+        // screen. The lobby has nothing to rejoin, so connecting is enough.
+        if (rejoinInPlace) return;
         restarting = false;
         hide();
       });
     },
+    recovered: recovered,
   };
 })();

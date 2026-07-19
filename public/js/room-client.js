@@ -1407,32 +1407,39 @@ function createEmotesDropdown() {
   const list = document.createElement("div");
   list.className = "emotes-dropdown-list";
 
-  Object.entries(emoteList).forEach(([code, url]) => {
-    const item = document.createElement("div");
-    item.className = "emote-item";
-    const img = document.createElement("img");
-    img.referrerPolicy = "no-referrer";
-    img.src = EMOTE_IMAGE_PLACEHOLDER;
-    img.dataset.src = url;
-    img.alt = `:${code}:`;
-    img.decoding = "async";
-    const name = document.createElement("span");
-    name.textContent = code;
-    item.appendChild(img);
-    item.appendChild(name);
-    item.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropdown.style.display = "none";
-      setTimeout(() => {
-        if (chatInput) {
-          chatInput.focus();
-          insertEmote(code, null, { overlay: useOverlayEmotes });
-        }
-      }, 0);
+  // Emotes load asynchronously, so the picker can be built before they arrive.
+  // Fill it from the current emoteList now and refresh on open, so it never
+  // stays empty just because it was created too early.
+  const fillList = () => {
+    list.textContent = "";
+    Object.entries(emoteList).forEach(([code, url]) => {
+      const item = document.createElement("div");
+      item.className = "emote-item";
+      const img = document.createElement("img");
+      img.referrerPolicy = "no-referrer";
+      img.src = EMOTE_IMAGE_PLACEHOLDER;
+      img.dataset.src = url;
+      img.alt = `:${code}:`;
+      img.decoding = "async";
+      const name = document.createElement("span");
+      name.textContent = code;
+      item.appendChild(img);
+      item.appendChild(name);
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropdown.style.display = "none";
+        setTimeout(() => {
+          if (chatInput) {
+            chatInput.focus();
+            insertEmote(code, null, { overlay: useOverlayEmotes });
+          }
+        }, 0);
+      });
+      list.appendChild(item);
     });
-    list.appendChild(item);
-  });
+  };
+  fillList();
 
   const loadVisibleImages = () => hydrateVisibleEmoteImages(list);
   list.addEventListener("scroll", loadVisibleImages, { passive: true });
@@ -1448,6 +1455,7 @@ function createEmotesDropdown() {
       .querySelectorAll(".emotes-dropdown")
       .forEach((d) => (d.style.display = "none"));
     if (!visible) {
+      if (list.children.length !== Object.keys(emoteList).length) fillList();
       const rect = button.getBoundingClientRect();
       dropdown.style.top = `${rect.bottom + window.scrollY + 5}px`;
       dropdown.style.left = `${rect.left + window.scrollX}px`;
@@ -3253,6 +3261,9 @@ socket.on("room joined", (data) => {
     }
   }
 
+  // Back in the room for real, so close any reconnect/updating overlay.
+  if (window.TalkomaticConnection) window.TalkomaticConnection.recovered();
+
   setTimeout(() => {
     if (chatInput) {
       chatInput.focus();
@@ -3493,7 +3504,7 @@ function joinRoom(roomId, accessCode = null) {
 socket.io.on("reconnect", () => {
   if (tabSuperseded || !currentRoomId) return;
   if (isSpectating) {
-    socket.emit("staff spectate", { roomId: currentRoomId });
+    socket.emit("spectate room", { roomId: currentRoomId });
     return;
   }
 
@@ -3572,7 +3583,7 @@ async function initRoom() {
     if (spectate) {
       // Staff (dev or mod) read-only watch; the server validates the key.
       isSpectating = true;
-      socket.emit("staff spectate", { roomId });
+      socket.emit("spectate room", { roomId });
     } else {
       joinRoom(roomId, accessCode);
     }
@@ -4651,7 +4662,9 @@ function renderSpectate(data) {
   }
   banner.textContent = currentUserIsDev
     ? "SPECTATING (invisible, read-only). Dev tools stay active via the Dev button."
-    : "SPECTATING (invisible, read-only). Mod tools stay active via the Staff button.";
+    : currentUserIsMod
+      ? "SPECTATING (invisible, read-only). Mod tools stay active via the Staff button."
+      : "SPECTATING (read-only). You are watching this room. Use Leave to exit.";
 }
 
 socket.on("spectate joined", (data) => renderSpectate(data));

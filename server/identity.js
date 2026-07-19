@@ -217,6 +217,27 @@ function getRecord(id) {
   return store[id] || null;
 }
 
+// Devices whose recorded IPs match a predicate, newest first. Used to show which
+// accounts sit behind a banned IP or range. Only devices that carried a deviceId
+// are recorded, so a fresh IP with no history returns nothing.
+function devicesMatching(pred, limit = 25) {
+  const out = [];
+  for (const id of Object.keys(store)) {
+    const r = store[id];
+    if (!r || !r.ips) continue;
+    const hit = Object.keys(r.ips).filter((ip) => {
+      try {
+        return !!pred(ip);
+      } catch (_) {
+        return false;
+      }
+    });
+    if (hit.length) out.push({ id, name: r.name || null, ips: hit, last: r.last || 0 });
+  }
+  out.sort((a, b) => b.last - a.last);
+  return out.slice(0, limit);
+}
+
 function prune() {
   const now = Date.now();
   for (const id of Object.keys(store))
@@ -255,6 +276,7 @@ module.exports = {
   isActive,
   summary,
   getRecord,
+  devicesMatching,
   flushSync,
   ACTIVE_DAYS,
   ACTIVE_SEC,
