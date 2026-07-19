@@ -86,6 +86,7 @@ function rec(id) {
       ips: {},
       name: null,
       loc: null,
+      note: null,
     };
   }
   return r;
@@ -153,6 +154,24 @@ function setName(id, name, loc) {
   if (loc) r.loc = String(loc).slice(0, 30);
   r.last = Date.now();
   saveSoon();
+}
+
+function setNote(id, note) {
+  if (!validId(id)) return false;
+  const r = rec(id);
+  const text = typeof note === "string" ? note.trim() : "";
+  const next = text ? text.slice(0, 1000) : null;
+  if (r.note === next) return false;
+  r.note = next;
+  r.last = Date.now();
+  saveSoon();
+  return true;
+}
+
+function getNote(id) {
+  if (!validId(id)) return null;
+  const r = store[id];
+  return r && typeof r.note === "string" && r.note ? r.note : null;
 }
 
 function isActive(id) {
@@ -231,6 +250,8 @@ module.exports = {
   addTime,
   tick,
   setName,
+  setNote,
+  getNote,
   isActive,
   summary,
   getRecord,

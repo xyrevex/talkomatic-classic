@@ -104,7 +104,7 @@
     other: {
       color: "#6b7080",
       icon: "fa-circle-info",
-      label: "Other: spectate, staff login",
+      label: "Other: spectate, staff login, mod note",
     },
   };
 

@@ -2519,6 +2519,14 @@ function trophyImgFor(rank) {
   return img;
 }
 
+function syncUserRowNote(row, user) {
+  if (!row || !user) return;
+  const note = typeof user.note === "string" ? user.note : "";
+  row.dataset.note = note;
+  const noteBtn = row.querySelector(".note-action-button");
+  if (noteBtn) noteBtn.classList.toggle("has-note", !!note);
+}
+
 function createUserRow(user, container) {
   const row = document.createElement("div");
   row.classList.add("chat-row");
@@ -2534,6 +2542,8 @@ function createUserRow(user, container) {
   if (user.isDev && !user.isHidden) {
     row.classList.add("dev-user");
   }
+
+  syncUserRowNote(row, user);
 
   const info = document.createElement("span");
   info.className = "user-info";
@@ -2625,13 +2635,25 @@ function createUserRow(user, container) {
     : currentUserIsMod
       ? targetVisibleRole === null
       : false;
-  if (isStaff() && user.id !== currentUserId && canActOnTarget) {
-    const staffBtn = document.createElement("button");
-    staffBtn.className = "staff-action-button";
-    staffBtn.innerHTML = '<i class="fas fa-gear"></i>'; // gear
-    staffBtn.title = "Staff actions";
-    staffBtn.addEventListener("click", () => openUserStaffMenu(user));
-    info.appendChild(staffBtn);
+  if (isStaff()) {
+    const noteBtn = document.createElement("button");
+    noteBtn.className = "staff-action-button note-action-button";
+    noteBtn.innerHTML = '<i class="fas fa-sticky-note"></i>';
+    noteBtn.title = user.id === currentUserId ? "View/edit your note" : "View/edit note";
+    noteBtn.addEventListener("click", () => {
+      const note = row.dataset.note || "";
+      openUserNoteDialog({ ...user, note }, { viewOnly: false });
+    });
+    info.appendChild(noteBtn);
+
+    if (user.id !== currentUserId && canActOnTarget) {
+      const staffBtn = document.createElement("button");
+      staffBtn.className = "staff-action-button";
+      staffBtn.innerHTML = '<i class="fas fa-gear"></i>'; // gear
+      staffBtn.title = "Staff actions";
+      staffBtn.addEventListener("click", () => openUserStaffMenu(user));
+      info.appendChild(staffBtn);
+    }
   }
   // Report flag is available to everyone (staff included) on other users' rows,
   // so anyone can flag a problem user, a bad room, or even a misbehaving mod.
@@ -3332,6 +3354,7 @@ socket.on("room update", (roomData) => {
       const row = document.querySelector(`.chat-row[data-user-id="${u.id}"]`);
       if (!row) return;
       applyDevAppearanceToRow(row, u);
+      syncUserRowNote(row, u);
     });
   }
 
@@ -3802,6 +3825,40 @@ async function openReportPrompt(user) {
     });
 }
 
+async function openUserNoteDialog(user, { viewOnly = true } = {}) {
+  const name = user.username || "user";
+  const currentNote = typeof user.note === "string" ? user.note : "";
+  if (!window.StaffUI) {
+    const msg = currentNote || "No note on file.";
+    window.alert(`Note for ${name}:\n\n${msg}`);
+    return;
+  }
+  if (viewOnly) {
+    StaffUI.alert(
+      `Note for ${name}`,
+      currentNote || "No note on file.",
+      '<i class="fas fa-sticky-note"></i>',
+    );
+    return;
+  }
+  const r = await StaffUI.prompt({
+    title: `Note for ${name}`,
+    icon: '<i class="fas fa-sticky-note"></i>',
+    fields: [
+      {
+        name: "value",
+        label: "Note message",
+        type: "textarea",
+        value: currentNote,
+        placeholder: "This user was promoting unsafe websites...",
+        maxLength: 1000,
+      },
+    ],
+    confirmText: "Save note",
+  });
+  if (r != null) socket.emit("staff note", { targetUserId: user.id, message: r });
+}
+
 // ── Per-user staff menu ──────────────────────────────────────────────────────
 function openUserStaffMenu(user) {
   if (!window.StaffUI) return;
@@ -3816,31 +3873,49 @@ function openUserStaffMenu(user) {
   // Kick. Full mods/devs also place a room ban; junior mods can only remove.
   items.push({
     icon: '<i class="fas fa-user-slash"></i>',
-    label: isFullMod ? "Kick + room ban" : "Kick from room",
+    label: "Kick from room",
     danger: true,
-    desc: isFullMod
-      ? "Remove and ban from this room"
-      : "Remove from this room (no ban)",
+    desc: "Remove from this room (no ban)",
     onClick: async () => {
       if (
         await StaffUI.confirm({
-          title: isFullMod ? "Kick + ban" : "Kick",
-          message: isFullMod
-            ? `Kick and room-ban ${name}?`
-            : `Remove ${name} from this room?`,
+          title: "Kick",
+          message: `Remove ${name} from this room?`,
           danger: true,
-          confirmText: isFullMod ? "Kick + ban" : "Kick",
+          confirmText: "Kick",
         })
-      )
-        socket.emit("staff kick", { targetUserId: user.id, ban: isFullMod });
+      ) {
+        socket.emit("staff kick", { targetUserId: user.id, ban: false });
+      }
     },
   });
+
+  if (isFullMod) {
+    items.push({
+      icon: '<i class="fas fa-user-slash"></i>',
+      label: "Kick and room ban",
+      danger: true,
+      desc: "Remove and ban from this room",
+      onClick: async () => {
+        if (
+          await StaffUI.confirm({
+            title: "Kick + ban",
+            message: `Kick and room-ban ${name}?`,
+            danger: true,
+            confirmText: "Kick + ban",
+          })
+        ) {
+          socket.emit("staff kick", { targetUserId: user.id, ban: true });
+        }
+      },
+    });
+  }
 
   // IP block - full mods / devs only.
   if (isFullMod) {
     items.push({
       icon: '<i class="fas fa-ban"></i>',
-      label: "IP block…",
+      label: "IP block...",
       danger: true,
       desc: "Block this user's IP for a set time",
       onClick: () => openIpBlockPicker(user),
@@ -3857,7 +3932,7 @@ function openUserStaffMenu(user) {
   // Warn and force rename: available to every mod level.
   items.push({
     icon: '<i class="fas fa-bullhorn"></i>',
-    label: "Warn…",
+    label: "Warn...",
     desc: "Send a private warning",
     onClick: async () => {
       const r = await StaffUI.prompt({
@@ -3868,7 +3943,7 @@ function openUserStaffMenu(user) {
             name: "value",
             label: "Warning message",
             type: "textarea",
-            placeholder: "Please follow the room rules…",
+            placeholder: "Please follow the room rules...",
             maxLength: 1000,
             required: true,
           },
@@ -3898,7 +3973,7 @@ function openUserStaffMenu(user) {
   // may mint a junior (L1) key only. The server re-checks who may grant what.
   const makeModItem = {
     icon: '<i class="fas fa-user-shield"></i>',
-    label: currentUserIsDev ? "Make this user a mod…" : "Make junior mod",
+    label: currentUserIsDev ? "Make this user a mod..." : "Make junior mod",
     desc: currentUserIsDev
       ? "Promote - choose a level"
       : "Grant a junior (level 1) mod key",
@@ -4198,7 +4273,7 @@ function openStaffPanel() {
     });
     appearanceItems.push({
       icon: '<i class="fas fa-palette"></i>',
-      label: "Custom name color…",
+      label: "Custom name color...",
       desc: "Set your chat text color",
       onClick: async () => {
         const color = await StaffUI.prompt({
@@ -4250,7 +4325,7 @@ function openStaffPanel() {
       items: [
         {
           icon: '<i class="fas fa-tower-broadcast"></i>',
-          label: "Megaphone this room…",
+          label: "Megaphone this room...",
           desc: "Announcement banner to this room",
           onClick: async () => {
             const m = await StaffUI.prompt({
@@ -4304,7 +4379,7 @@ function openStaffPanel() {
       items: [
         {
           icon: '<i class="fas fa-flag"></i>',
-          label: "Feature flags…",
+          label: "Feature flags...",
           desc: "Word filter / room creation / limit",
           onClick: () => socket.emit("dev get flags"),
         },
@@ -4476,7 +4551,7 @@ function toggleDevHud() {
   }
   hud = document.createElement("div");
   hud.id = "devHud";
-  hud.textContent = "HUD: loading…";
+  hud.textContent = "HUD: loading...";
   document.body.appendChild(hud);
   const poll = () => socket.emit("dev request hud");
   poll();
@@ -4752,7 +4827,7 @@ socket.on("staff key result", (d) => {
   else localStorage.setItem("talkomatic_modKey", pendingStaffKey);
   pendingStaffKey = null;
   notify(
-    `Key accepted. You are ${d.role}${d.label ? " (" + d.label + ")" : ""}. Reloading…`,
+    `Key accepted. You are ${d.role}${d.label ? " (" + d.label + ")" : ""}. Reloading...`,
     "success",
   );
   setTimeout(() => window.location.reload(), 1200);
@@ -4762,8 +4837,8 @@ socket.on("you are now mod", (d) => {
   localStorage.setItem("talkomatic_modKey", d.key);
   notify(
     d.level === 2
-      ? "You've been promoted to Moderator (full)! Reloading…"
-      : "You've been made a Junior Moderator! Reloading…",
+      ? "You've been promoted to Moderator (full)! Reloading..."
+      : "You've been made a Junior Moderator! Reloading...",
     "success",
     { title: "You are now a mod", timeout: 4000 },
   );

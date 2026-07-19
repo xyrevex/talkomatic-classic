@@ -115,7 +115,7 @@ function deviceTypeFromUA(ua) {
   if (/(watchos|apple watch|wear os|wearos|galaxy watch|tizen watch|smartwatch)/i.test(s))
     return "watch";
 
-  if (/(smart-?tv|googletv|apple tv|androidtv|crkey|roku|aft[a-z]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/i.test(s))
+  if (/(smart-?tv|googletv|apple tv|tv safari|androidtv|crkey|roku|aft[a-z]|netcast|web0s|webos|tizen|hbbtv|bravia|viera)/i.test(s))
     return "tv";
 
   if ((/(ipad|tablet|playbook|portalgo)/i.test(s) || (/android/i.test(s) && !/mobile/i.test(s))) &&
@@ -129,10 +129,10 @@ function deviceTypeFromUA(ua) {
   if (/(android automotive|androidauto|carplay|tesla|mbux|sync|qtcarbrowser)/i.test(s))
     return "car";
 
-  if (/(blackberry|nokia)/i.test(s) && !/android/i.test(s))
+  if (/(blackberry|bb10|nokia)/i.test(s) && !/android/i.test(s))
     return "qwerty";
 
-  if (/(mobi|iphone|ipod|android|bb10|iemobile|opera mini|windows phone)/i.test(s))
+  if (/(mobi|iphone|ipod|android|blackberry|bb10|nokia|iemobile|opera mini|windows phone)/i.test(s))
     return "mobile";
 
   if (/(windows|macintosh|mac os|linux|cros|x11)/i.test(s))
@@ -151,8 +151,8 @@ function io() {
 // ── Talkoboard: Server-Side Stroke Storage (ephemeral) ──────────────────────
 
 const boardState = new Map(); // roomId → { strokes: [], active: Map<userId, stroke> }
-const MAX_BOARD_STROKES = 500;
-const MAX_POINTS_PER_STROKE = 10000;
+const MAX_BOARD_STROKES = 2000;
+const MAX_POINTS_PER_STROKE = 5000;
 
 function getBoardState(roomId) {
   if (!boardState.has(roomId)) {
@@ -558,6 +558,14 @@ function canActOn(actorSocket, targetUserId) {
   if (actorSocket?.isDev) return targetRole !== "dev";
   if (actorSocket?.isMod) return targetRole === null;
   return false;
+}
+
+function canManageNotesOn(actorSocket, targetUserId) {
+  if (!actorSocket) return false;
+  if (actorSocket.isDev) return true;
+  if (!actorSocket.isMod || (actorSocket.modLevel || 2) < 1) return false;
+  const targetRole = getUserStaffRole(targetUserId);
+  return targetRole === null || targetRole === "mod";
 }
 
 // Gate helpers: emit a uniform error and return false when not permitted.
@@ -1147,6 +1155,11 @@ function formatUserForSocket(user, recipientSocket) {
   const recipientIsDev = !!recipientSocket?.isDev;
   if (user.isHidden && !recipientIsDev) {
     return formatted;
+  }
+
+  if (recipientSocket?.isDev || recipientSocket?.isMod) {
+    const note = user.deviceId ? identity.getNote(user.deviceId) : null;
+    if (note) formatted.note = note;
   }
 
   if (user.isDev) {
@@ -4054,6 +4067,53 @@ function registerSocketHandlers() {
           action: "warn",
           ok: true,
           targetUserId,
+        });
+      }),
+    );
+
+    socket.on(
+      "staff note",
+      safe(async (data) => {
+        if (!requireStaff(socket)) return;
+        const targetUserId = data?.targetUserId;
+        if (!targetUserId)
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.BAD_REQUEST,
+              "targetUserId required.",
+            ),
+          );
+        if (!canManageNotesOn(socket, targetUserId))
+          return socket.emit(
+            "error",
+            createErrorResponse(
+              ERROR_CODES.FORBIDDEN,
+              "You cannot manage notes for this user.",
+            ),
+          );
+        const roomId = getUserCurrentRoom(targetUserId);
+        const room = roomId ? state.rooms.get(roomId) : null;
+        const targetUser = room?.users.find((u) => u.id === targetUserId);
+        const targetSocket = findSocketByUserId(targetUserId, roomId);
+        const targetDeviceId = targetSocket?.deviceId || targetUser?.deviceId || null;
+        const note = sanitizeMessage(
+          typeof data?.message === "string" ? data.message : "",
+        ).slice(0, 1000);
+        if (targetDeviceId) identity.setNote(targetDeviceId, note);
+        if (roomId) updateRoom(roomId);
+        logStaff(
+          socket,
+          note ? "set note" : "clear note",
+          targetUser || { id: targetUserId },
+          room || "-",
+          note || "(cleared)",
+        );
+        socket.emit("staff action result", {
+          action: note ? "set note" : "clear note",
+          ok: true,
+          targetUserId,
+          note: note || null,
         });
       }),
     );
